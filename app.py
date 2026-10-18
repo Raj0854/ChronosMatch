@@ -1,7 +1,8 @@
 import mmap
 import struct
 import tempfile
-from market_simulator import generate_order
+import asyncio
+from market_simulator import generate_orders
 
 # --------------------------------------------------
 # STEP 1: Define one order's binary layout with struct
@@ -59,9 +60,24 @@ class RingBuffer:
         self.count -= 1  # One order has been removed from the buffer.
         return order  # Give the order details back to the caller.
 
+# --------------------------------------------------
+# STEP 3: Create process order functions
+# --------------------------------------------------
+async def producer(buffer):
+    async for order in generate_orders():
+        while not buffer.push(*order):
+            await asyncio.sleep(0.01)
+        print(f"Produced : {order} ")
+async def consumer(buffer,producer_task):
+    while not producer_task.done() or buffer.count >0  :
+        order=buffer.pop()
+        if order  is not None:
+            print(f"Consumed : {order}")
+        else:
+            await asyncio.sleep(0.01)
 
 # --------------------------------------------------
-# STEP 3: Run a small demonstration
+# STEP 4: Run a small demonstration
 # --------------------------------------------------
 def main():
     capacity = 3
@@ -80,16 +96,11 @@ def main():
 
             buffer = RingBuffer(memory, capacity)
 
-            for order_id in range(101, 106):
-                order = generate_order(order_id)
-                added = buffer.push(*order)
-                print(f"Order : {order} | Added : {added}. ")
-            print("\nReadings order from buffer:")
-            while True:
-                order=buffer.pop()
-                if order is None:
-                    break
-                print(f"Consumed order : {order}")
+            async def run_pipeline():
+                producer_task=asyncio.create_task(producer(buffer))
+                await consumer(buffer,producer_task)
+                await producer_task
+            asyncio.run(run_pipeline())
 
 
 if __name__ == "__main__":
