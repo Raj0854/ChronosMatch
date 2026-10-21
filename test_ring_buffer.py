@@ -1,5 +1,5 @@
 
-import unittest #automatically code test karne ke liye.automatically code test karne ke liye.
+import unittest #automatically code test karne ke liye.
 import mmap
 import tempfile
 
