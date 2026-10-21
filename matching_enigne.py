@@ -1,0 +1,63 @@
+class MatchingEngine:
+    def __init__(self):
+        self.buy_orders = []
+        self.sell_orders = []
+
+    def add_buy_order(self, order_id, price, quantity):
+        order = (order_id, price,quantity)
+        self.buy_orders.append(order)
+
+    def add_sell_order(self, order_id, price, quantity):
+        order = (order_id, price, quantity)
+        self.sell_orders.append(order)
+
+    def sort_buy_orders(self):
+        self.buy_orders.sort(key=lambda order: order[1], reverse=True)
+
+    def sort_sell_orders(self):
+        self.sell_orders.sort(key=lambda order: order[1])
+
+    def match_orders(self):
+        self.sort_buy_orders()
+        self.sort_sell_orders()
+
+        while self.buy_orders and self.sell_orders:
+            buy = self.buy_orders[0]
+            sell = self.sell_orders[0]
+
+            # Buyer ki price seller ki price se kam hai
+            if buy[1] < sell[1]:
+                break
+
+            trade_quantity = min(buy[2], sell[2])
+
+            print(
+                f"Trade: Buy Order {buy[0]} + Sell Order {sell[0]} | "
+                f"Price: {sell[1]} | Quantity: {trade_quantity}"
+            )
+
+            # Remaining quantities calculate karo
+            buy_remaining = buy[2] - trade_quantity
+            sell_remaining = sell[2] - trade_quantity
+
+            if buy_remaining == 0:
+                self.buy_orders.pop(0)
+            else:
+                self.buy_orders[0] = (buy[0], buy[1], buy_remaining)
+
+            if sell_remaining == 0:
+                self.sell_orders.pop(0)
+            else:
+                self.sell_orders[0] = (sell[0], sell[1], sell_remaining)
+
+
+if __name__ == "__main__":
+    engine = MatchingEngine()
+
+    engine.add_buy_order(101, 100, 10)
+    engine.add_sell_order(201, 100, 4)
+
+    engine.match_orders()
+
+    print("Remaining buy orders:", engine.buy_orders)
+    print("Remaining sell orders:", engine.sell_orders)
