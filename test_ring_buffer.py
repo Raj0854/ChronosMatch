@@ -25,15 +25,14 @@ class TestRingBuffer(unittest.TestCase):
         self.file.close()
 
     def test_push_and_pop(self):
-        self.assertTrue(self.buffer.push(101, 10000, 5))
-        self.assertEqual(self.buffer.pop(), (101, 10000, 5))
+        self.assertTrue(self.buffer.push(101, 0, 10000, 5))
+        self.assertEqual(self.buffer.pop(), (101, 0, 10000, 5))
 
     def test_full_buffer(self):
-        self.buffer.push(101, 10000, 5)
-        self.buffer.push(102, 10025, 2)
-        self.buffer.push(103, 9990, 7)
-
-        self.assertFalse(self.buffer.push(104, 10010, 1))
+        self.buffer.push(101, 0, 10000, 5)
+        self.buffer.push(102, 1, 10025, 2)
+        self.buffer.push(103, 0, 9990, 7)
+        self.assertFalse(self.buffer.push(104, 1, 10010, 1))
 
     def test_empty_buffer(self):
         self.assertIsNone(self.buffer.pop())
