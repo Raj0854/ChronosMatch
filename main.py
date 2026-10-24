@@ -3,7 +3,7 @@ import struct
 import tempfile
 import asyncio
 from market_simulator import generate_orders
-from matching_enigne import MatchingEngine
+from matching_engine import MatchingEngine
 
 # --------------------------------------------------
 # STEP 1: Define one order's binary layout with struct
