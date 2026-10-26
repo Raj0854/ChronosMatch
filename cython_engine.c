@@ -1715,6 +1715,9 @@ struct __pyx_obj_13cython_engine_CythonMatchingEngine {
 
 struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine {
   int (*_valid_order)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *, int, int, int);
+  void (*_sort_buy_orders)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *);
+  void (*_sort_sell_orders)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *);
+  void (*_execute_matching)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *);
 };
 static struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *__pyx_vtabptr_13cython_engine_CythonMatchingEngine;
 /* #### Code section: utility_code_proto ### */
@@ -2145,6 +2148,66 @@ static void __Pyx_RaiseErrorWithType1(PyObject* exc_type, const char* message, c
 CYTHON_UNUSED
 static int __Pyx_RaiseUnexpectedTypeError(const char *expected, PyObject *obj);
 
+/* GivenExceptionMatches.proto (used by PyErrExceptionMatches) */
+#if CYTHON_COMPILING_IN_CPYTHON
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject *type);
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2);
+#else
+#define __Pyx_PyErr_GivenExceptionMatches(err, type) PyErr_GivenExceptionMatches(err, type)
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2) {
+    return PyErr_GivenExceptionMatches(err, type1) || PyErr_GivenExceptionMatches(err, type2);
+}
+#endif
+#define __Pyx_PyErr_ExceptionMatches2(err1, err2)  __Pyx_PyErr_GivenExceptionMatches2(__Pyx_PyErr_CurrentExceptionType(), err1, err2)
+
+/* PyErrExceptionMatches.proto (used by PyObjectGetAttrStrNoError) */
+#if CYTHON_FAST_THREAD_STATE
+#define __Pyx_PyErr_ExceptionMatches(err) __Pyx_PyErr_ExceptionMatchesInState(__pyx_tstate, err)
+static CYTHON_INLINE int __Pyx_PyErr_ExceptionMatchesInState(PyThreadState* tstate, PyObject* err);
+#else
+#define __Pyx_PyErr_ExceptionMatches(err)  PyErr_ExceptionMatches(err)
+#endif
+
+/* PyObjectGetAttrStrNoError.proto (used by HasAttr) */
+static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStrNoError(PyObject* obj, PyObject* attr_name);
+
+/* HasAttr.proto (used by ImportImpl) */
+#if __PYX_LIMITED_VERSION_HEX >= 0x030d0000
+#define __Pyx_HasAttr(o, n)  PyObject_HasAttrWithError(o, n)
+#else
+static CYTHON_INLINE int __Pyx_HasAttr(PyObject *, PyObject *);
+#endif
+
+/* TupleOrListFromArrayImpl.proto (used by ListFromArray) */
+CYTHON_UNUSED static PyObject *
+__Pyx_PyList_FromArray(PyObject *const *src, Py_ssize_t n);
+
+/* ListFromArray.proto (used by ImportImpl) */
+
+
+/* ImportImpl.export */
+static PyObject *__Pyx__Import(PyObject *name, PyObject *const *imported_names, Py_ssize_t len_imported_names, PyObject *qualname, PyObject *moddict, int level);
+
+/* Import.proto */
+static CYTHON_INLINE PyObject *__Pyx_Import(PyObject *name, PyObject *const *imported_names, Py_ssize_t len_imported_names, PyObject *qualname, int level);
+
+/* RaiseErrorWithObjectTypes.proto (used by PyNumberBinop) */
+#define __Pyx_RaiseErrorWithObjectTypes1(exc_type, message, arg, obj1, obj2) __Pyx_RaiseErrorWithTypes1(exc_type, message, arg, Py_TYPE(obj1), Py_TYPE(obj2))
+#define __Pyx_RaiseTypeErrorWithObjectTypes(message, obj1, obj2) __Pyx_RaiseTypeErrorWithTypes(message, Py_TYPE(obj1), Py_TYPE(obj2))
+#define __Pyx_RaiseTypeErrorWithTypes(message, type_obj1, type_obj2) __Pyx_RaiseErrorWithTypes1(PyExc_TypeError, "%.1s" message, "", type_obj1, type_obj2)
+CYTHON_UNUSED
+static void __Pyx_RaiseErrorWithTypes1(PyObject* exc_type, const char *message, const char *arg, PyTypeObject *type_obj1, PyTypeObject *type_obj2);
+
+/* PyNumberBinop.proto */
+#if CYTHON_COMPILING_IN_PYPY || CYTHON_COMPILING_IN_GRAAL || CYTHON_COMPILING_IN_LIMITED_API
+#define __Pyx_PyNumber_Subtract_object_object(op1, op2)  PyNumber_Subtract(op1, op2)
+#define __Pyx_PyNumber_InPlaceSubtract_object_object(op1, op2)  PyNumber_InPlaceSubtract(op1, op2)
+#else
+#define __Pyx_PyNumber_Subtract_object_object(op1, op2)  __Pyx__PyNumber_Subtract_object_object(op1, op2, 0)
+#define __Pyx_PyNumber_InPlaceSubtract_object_object(op1, op2)  __Pyx__PyNumber_Subtract_object_object(op1, op2, 1)
+static CYTHON_INLINE PyObject* __Pyx__PyNumber_Subtract_object_object(PyObject *op1, PyObject *op2, int inplace);
+#endif
+
 /* PyTypeError_Check.proto */
 #define __Pyx_PyExc_TypeError_Check(obj)  __Pyx_TypeCheck(obj, PyExc_TypeError)
 
@@ -2208,13 +2271,6 @@ CYTHON_UNUSED static int __Pyx_PyType_Ready(PyTypeObject *t);
 /* GetVTable.proto (used by MergeVTables) */
 static int __Pyx_GetVtable(PyTypeObject *type, void** table);
 
-/* RaiseErrorWithObjectTypes.proto (used by MergeVTables) */
-#define __Pyx_RaiseErrorWithObjectTypes1(exc_type, message, arg, obj1, obj2) __Pyx_RaiseErrorWithTypes1(exc_type, message, arg, Py_TYPE(obj1), Py_TYPE(obj2))
-#define __Pyx_RaiseTypeErrorWithObjectTypes(message, obj1, obj2) __Pyx_RaiseTypeErrorWithTypes(message, Py_TYPE(obj1), Py_TYPE(obj2))
-#define __Pyx_RaiseTypeErrorWithTypes(message, type_obj1, type_obj2) __Pyx_RaiseErrorWithTypes1(PyExc_TypeError, "%.1s" message, "", type_obj1, type_obj2)
-CYTHON_UNUSED
-static void __Pyx_RaiseErrorWithTypes1(PyObject* exc_type, const char *message, const char *arg, PyTypeObject *type_obj1, PyTypeObject *type_obj2);
-
 /* MergeVTables.proto (used by SetVTable) */
 static int __Pyx_MergeVtables(PyTypeObject *type);
 
@@ -2231,29 +2287,6 @@ static PyObject *__Pyx_GetTypeTypeDict(PyTypeObject *tp);
 
 /* DelItemOnTypeDict.export */
 static int __Pyx__DelItemOnTypeDict(PyTypeObject *tp, PyObject *k);
-
-/* GivenExceptionMatches.proto (used by PyErrExceptionMatches) */
-#if CYTHON_COMPILING_IN_CPYTHON
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject *type);
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2);
-#else
-#define __Pyx_PyErr_GivenExceptionMatches(err, type) PyErr_GivenExceptionMatches(err, type)
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *type1, PyObject *type2) {
-    return PyErr_GivenExceptionMatches(err, type1) || PyErr_GivenExceptionMatches(err, type2);
-}
-#endif
-#define __Pyx_PyErr_ExceptionMatches2(err1, err2)  __Pyx_PyErr_GivenExceptionMatches2(__Pyx_PyErr_CurrentExceptionType(), err1, err2)
-
-/* PyErrExceptionMatches.proto (used by PyObjectGetAttrStrNoError) */
-#if CYTHON_FAST_THREAD_STATE
-#define __Pyx_PyErr_ExceptionMatches(err) __Pyx_PyErr_ExceptionMatchesInState(__pyx_tstate, err)
-static CYTHON_INLINE int __Pyx_PyErr_ExceptionMatchesInState(PyThreadState* tstate, PyObject* err);
-#else
-#define __Pyx_PyErr_ExceptionMatches(err)  PyErr_ExceptionMatches(err)
-#endif
-
-/* PyObjectGetAttrStrNoError.proto (used by SetupReduce) */
-static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStrNoError(PyObject* obj, PyObject* attr_name);
 
 /* SetItemOnTypeDict.proto (used by SetupReduce) */
 #define __Pyx_SetItemOnTypeDict(tp, k, v) __Pyx__SetItemOnTypeDict((PyTypeObject*)tp, k, v)
@@ -2575,6 +2608,9 @@ static int __Pyx_State_RemoveModule(void*);
 #define __PYX_TYPE_MODULE_PREFIX __PYX_ABI_MODULE_NAME "."
 
 static int __pyx_f_13cython_engine_20CythonMatchingEngine__valid_order(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self, int __pyx_v_order_id, int __pyx_v_price, int __pyx_v_quantity); /* proto*/
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__sort_buy_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto*/
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__sort_sell_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto*/
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__execute_matching(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto*/
 
 /* Module declarations from "libc.string" */
 
@@ -2600,8 +2636,9 @@ static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_6add_sell_order
 static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_8get_order_books(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_10get_trades(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
 static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_12match_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
-static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_14__reduce_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
-static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_16__setstate_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self, CYTHON_UNUSED PyObject *__pyx_v___pyx_state); /* proto */
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_14profile_stages(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_16__reduce_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self); /* proto */
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_18__setstate_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self, CYTHON_UNUSED PyObject *__pyx_v___pyx_state); /* proto */
 static PyObject *__pyx_tp_new__initialisation_13cython_engine_CythonMatchingEngine(PyObject *o, 
 #if CYTHON_VECTORCALL_TPNEW
     PyObject *const *args, Py_ssize_t nargs, PyObject *kwnames
@@ -2653,8 +2690,8 @@ namespace {
     __Pyx_CachedCFunction __pyx_umethod_PyDict_Type_items;
     __Pyx_CachedCFunction __pyx_umethod_PyDict_Type_pop;
     __Pyx_CachedCFunction __pyx_umethod_PyDict_Type_values;
-    PyObject *__pyx_codeobj_tab[7];
-    PyObject *__pyx_string_tab[70];
+    PyObject *__pyx_codeobj_tab[8];
+    PyObject *__pyx_string_tab[72];
 /* #### Code section: module_state_contents ### */
 /* CommonTypesMetaclass.module_state_decls */
 PyTypeObject *__pyx_CommonTypesMetaclassType;
@@ -2715,30 +2752,30 @@ static __pyx_mstatetype * const __pyx_mstate_global = &__pyx_mstate_global_stati
 #define __pyx_n_u_CythonMatchingEngine_get_order_b __pyx_string_tab[14]
 #define __pyx_n_u_CythonMatchingEngine_get_trades __pyx_string_tab[15]
 #define __pyx_n_u_CythonMatchingEngine_match_order __pyx_string_tab[16]
-#define __pyx_n_u_Pyx_PyDict_NextRef __pyx_string_tab[17]
-#define __pyx_n_u_annotate __pyx_string_tab[18]
-#define __pyx_n_u_func __pyx_string_tab[19]
-#define __pyx_n_u_getstate __pyx_string_tab[20]
-#define __pyx_n_u_main __pyx_string_tab[21]
-#define __pyx_n_u_module __pyx_string_tab[22]
-#define __pyx_n_u_name __pyx_string_tab[23]
-#define __pyx_n_u_pyx_state __pyx_string_tab[24]
-#define __pyx_n_u_pyx_vtable __pyx_string_tab[25]
-#define __pyx_n_u_qualname __pyx_string_tab[26]
-#define __pyx_n_u_reduce __pyx_string_tab[27]
-#define __pyx_n_u_reduce_cython __pyx_string_tab[28]
-#define __pyx_n_u_reduce_ex __pyx_string_tab[29]
-#define __pyx_n_u_set_name __pyx_string_tab[30]
-#define __pyx_n_u_setstate __pyx_string_tab[31]
-#define __pyx_n_u_setstate_cython __pyx_string_tab[32]
-#define __pyx_n_u_test __pyx_string_tab[33]
-#define __pyx_n_u_is_coroutine __pyx_string_tab[34]
-#define __pyx_n_u_add_buy_order __pyx_string_tab[35]
-#define __pyx_n_u_add_sell_order __pyx_string_tab[36]
-#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[37]
-#define __pyx_n_u_buy __pyx_string_tab[38]
-#define __pyx_n_u_buy_remaining __pyx_string_tab[39]
-#define __pyx_n_u_buy_result __pyx_string_tab[40]
+#define __pyx_n_u_CythonMatchingEngine_profile_sta __pyx_string_tab[17]
+#define __pyx_n_u_Pyx_PyDict_NextRef __pyx_string_tab[18]
+#define __pyx_n_u_annotate __pyx_string_tab[19]
+#define __pyx_n_u_func __pyx_string_tab[20]
+#define __pyx_n_u_getstate __pyx_string_tab[21]
+#define __pyx_n_u_main __pyx_string_tab[22]
+#define __pyx_n_u_module __pyx_string_tab[23]
+#define __pyx_n_u_name __pyx_string_tab[24]
+#define __pyx_n_u_pyx_state __pyx_string_tab[25]
+#define __pyx_n_u_pyx_vtable __pyx_string_tab[26]
+#define __pyx_n_u_qualname __pyx_string_tab[27]
+#define __pyx_n_u_reduce __pyx_string_tab[28]
+#define __pyx_n_u_reduce_cython __pyx_string_tab[29]
+#define __pyx_n_u_reduce_ex __pyx_string_tab[30]
+#define __pyx_n_u_set_name __pyx_string_tab[31]
+#define __pyx_n_u_setstate __pyx_string_tab[32]
+#define __pyx_n_u_setstate_cython __pyx_string_tab[33]
+#define __pyx_n_u_test __pyx_string_tab[34]
+#define __pyx_n_u_is_coroutine __pyx_string_tab[35]
+#define __pyx_n_u_add_buy_order __pyx_string_tab[36]
+#define __pyx_n_u_add_sell_order __pyx_string_tab[37]
+#define __pyx_n_u_asyncio_coroutines __pyx_string_tab[38]
+#define __pyx_n_u_buy_result __pyx_string_tab[39]
+#define __pyx_n_u_buy_sort_ns __pyx_string_tab[40]
 #define __pyx_n_u_capacity __pyx_string_tab[41]
 #define __pyx_n_u_cline_in_traceback __pyx_string_tab[42]
 #define __pyx_n_u_copy __pyx_string_tab[43]
@@ -2747,27 +2784,29 @@ static __pyx_mstatetype * const __pyx_mstate_global = &__pyx_mstate_global_stati
 #define __pyx_n_u_get_trades __pyx_string_tab[46]
 #define __pyx_n_u_i __pyx_string_tab[47]
 #define __pyx_n_u_items __pyx_string_tab[48]
-#define __pyx_n_u_j __pyx_string_tab[49]
-#define __pyx_n_u_match_orders __pyx_string_tab[50]
+#define __pyx_n_u_match_orders __pyx_string_tab[49]
+#define __pyx_n_u_matching_ns __pyx_string_tab[50]
 #define __pyx_n_u_order __pyx_string_tab[51]
 #define __pyx_n_u_order_id __pyx_string_tab[52]
-#define __pyx_n_u_pop __pyx_string_tab[53]
-#define __pyx_n_u_price __pyx_string_tab[54]
-#define __pyx_n_u_quantity __pyx_string_tab[55]
-#define __pyx_n_u_self __pyx_string_tab[56]
-#define __pyx_n_u_sell __pyx_string_tab[57]
-#define __pyx_n_u_sell_remaining __pyx_string_tab[58]
+#define __pyx_n_u_perf_counter_ns __pyx_string_tab[53]
+#define __pyx_n_u_pop __pyx_string_tab[54]
+#define __pyx_n_u_price __pyx_string_tab[55]
+#define __pyx_n_u_profile_stages __pyx_string_tab[56]
+#define __pyx_n_u_quantity __pyx_string_tab[57]
+#define __pyx_n_u_self __pyx_string_tab[58]
 #define __pyx_n_u_sell_result __pyx_string_tab[59]
-#define __pyx_n_u_setdefault __pyx_string_tab[60]
-#define __pyx_n_u_temp __pyx_string_tab[61]
-#define __pyx_n_u_trade_quantity __pyx_string_tab[62]
-#define __pyx_n_u_values __pyx_string_tab[63]
-#define __pyx_kp_b_iso88591_Q __pyx_string_tab[64]
-#define __pyx_kp_b_iso88591_A_t7_q __pyx_string_tab[65]
-#define __pyx_kp_b_iso88591_A_Q_a_E_at1_D_1A_gQ_k_he_e1_E_at __pyx_string_tab[66]
-#define __pyx_kp_b_iso88591_A_4t_7_1_4_T_1_Ya_Q_Kq_N_N_a_O4q __pyx_string_tab[67]
-#define __pyx_kp_b_iso88591_A_4t_7_1_4_3d_1_Ya_Q_L__A_O1_a_O __pyx_string_tab[68]
-#define __pyx_kp_b_iso88591_A_E_as_a_4_1_A_Cr_Kq_4wa_7_T_Rt1 __pyx_string_tab[69]
+#define __pyx_n_u_sell_sort_ns __pyx_string_tab[60]
+#define __pyx_n_u_setdefault __pyx_string_tab[61]
+#define __pyx_n_u_start __pyx_string_tab[62]
+#define __pyx_n_u_time __pyx_string_tab[63]
+#define __pyx_n_u_values __pyx_string_tab[64]
+#define __pyx_kp_b_iso88591_Q __pyx_string_tab[65]
+#define __pyx_kp_b_iso88591_A_Q_a_a __pyx_string_tab[66]
+#define __pyx_kp_b_iso88591_A_t7_q __pyx_string_tab[67]
+#define __pyx_kp_b_iso88591_A_A_Q_d_Rq_A_a_t_3b_A_a_d_Rq_N __pyx_string_tab[68]
+#define __pyx_kp_b_iso88591_A_Q_a_E_at1_D_1A_gQ_k_he_e1_E_at __pyx_string_tab[69]
+#define __pyx_kp_b_iso88591_A_4t_7_1_4_T_1_Ya_Q_Kq_N_N_a_O4q __pyx_string_tab[70]
+#define __pyx_kp_b_iso88591_A_4t_7_1_4_3d_1_Ya_Q_L__A_O1_a_O __pyx_string_tab[71]
 /* #### Code section: module_state_clear ### */
 #if CYTHON_USE_MODULE_STATE
 static CYTHON_SMALL_CODE int __pyx_m_clear(PyObject *m) {
@@ -2787,8 +2826,8 @@ static CYTHON_SMALL_CODE int __pyx_m_clear(PyObject *m) {
   Py_CLEAR(clear_module_state->__pyx_umethod_PyDict_Type_items.method);
   Py_CLEAR(clear_module_state->__pyx_umethod_PyDict_Type_pop.method);
   Py_CLEAR(clear_module_state->__pyx_umethod_PyDict_Type_values.method);
-  for (int i=0; i<7; ++i) { Py_CLEAR(clear_module_state->__pyx_codeobj_tab[i]); }
-  for (int i=0; i<70; ++i) { Py_CLEAR(clear_module_state->__pyx_string_tab[i]); }
+  for (int i=0; i<8; ++i) { Py_CLEAR(clear_module_state->__pyx_codeobj_tab[i]); }
+  for (int i=0; i<72; ++i) { Py_CLEAR(clear_module_state->__pyx_string_tab[i]); }
 /* #### Code section: module_state_clear_contents ### */
 /* CommonTypesMetaclass.module_state_clear */
 Py_CLEAR(clear_module_state->__pyx_CommonTypesMetaclassType);
@@ -2816,8 +2855,8 @@ static CYTHON_SMALL_CODE int __pyx_m_traverse(PyObject *m, visitproc visit, void
   Py_VISIT(traverse_module_state->__pyx_umethod_PyDict_Type_items.method);
   Py_VISIT(traverse_module_state->__pyx_umethod_PyDict_Type_pop.method);
   Py_VISIT(traverse_module_state->__pyx_umethod_PyDict_Type_values.method);
-  for (int i=0; i<7; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_codeobj_tab[i]); }
-  for (int i=0; i<70; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_string_tab[i]); }
+  for (int i=0; i<8; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_codeobj_tab[i]); }
+  for (int i=0; i<72; ++i) { __Pyx_VISIT_CONST(traverse_module_state->__pyx_string_tab[i]); }
 /* #### Code section: module_state_traverse_contents ### */
 /* CommonTypesMetaclass.module_state_traverse */
 Py_VISIT(traverse_module_state->__pyx_CommonTypesMetaclassType);
@@ -4436,7 +4475,7 @@ static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_10get_trades(st
  *     def get_trades(self):
  *         return self.trades.copy()             # <<<<<<<<<<<<<<
  * 
- *     def match_orders(self):
+ *     cdef void _sort_buy_orders(self):
 */
   __pyx_t_2 = __pyx_v_self->trades;
   __Pyx_INCREF(__pyx_t_2);
@@ -4483,9 +4522,709 @@ static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_10get_trades(st
 /* "cython_engine.pyx":123
  *         return self.trades.copy()
  * 
- *     def match_orders(self):             # <<<<<<<<<<<<<<
+ *     cdef void _sort_buy_orders(self):             # <<<<<<<<<<<<<<
  *         cdef int i, j
  *         cdef Order temp
+*/
+
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__sort_buy_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
+  int __pyx_v_i;
+  int __pyx_v_j;
+  struct __pyx_t_13cython_engine_Order __pyx_v_temp;
+  int __pyx_t_1;
+  int __pyx_t_2;
+  int __pyx_t_3;
+  int __pyx_t_4;
+  int __pyx_t_5;
+
+  /* "cython_engine.pyx":127
+ *         cdef Order temp
+ * 
+ *         for i in range(1, self.buy_count):             # <<<<<<<<<<<<<<
+ *             temp = self.buy_orders[i]
+ *             j = i - 1
+*/
+
+  __pyx_t_1 = __pyx_v_self->buy_count;
+  __pyx_t_2 = __pyx_t_1;
+
+  for (__pyx_t_3 = 1; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
+    __pyx_v_i = __pyx_t_3;
+
+    /* "cython_engine.pyx":128
+ * 
+ *         for i in range(1, self.buy_count):
+ *             temp = self.buy_orders[i]             # <<<<<<<<<<<<<<
+ *             j = i - 1
+ * 
+*/
+    __pyx_v_temp = (__pyx_v_self->buy_orders[__pyx_v_i]);
+
+    /* "cython_engine.pyx":129
+ *         for i in range(1, self.buy_count):
+ *             temp = self.buy_orders[i]
+ *             j = i - 1             # <<<<<<<<<<<<<<
+ * 
+ *             while j >= 0 and (
+*/
+    __pyx_v_j = (__pyx_v_i - 1);
+
+    /* "cython_engine.pyx":131
+ *             j = i - 1
+ * 
+ *             while j >= 0 and (             # <<<<<<<<<<<<<<
+ *                 self.buy_orders[j].price < temp.price or
+ *                 (self.buy_orders[j].price == temp.price and
+*/
+    while (1) {
+      __pyx_t_5 = (__pyx_v_j >= 0);
+
+      if (__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":132
+ * 
+ *             while j >= 0 and (
+ *                 self.buy_orders[j].price < temp.price or             # <<<<<<<<<<<<<<
+ *                 (self.buy_orders[j].price == temp.price and
+ *                  self.buy_orders[j].sequence > temp.sequence)
+*/
+      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).price < __pyx_v_temp.price);
+
+      if (!__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":133
+ *             while j >= 0 and (
+ *                 self.buy_orders[j].price < temp.price or
+ *                 (self.buy_orders[j].price == temp.price and             # <<<<<<<<<<<<<<
+ *                  self.buy_orders[j].sequence > temp.sequence)
+ *             ):
+*/
+      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).price == __pyx_v_temp.price);
+
+      if (__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":134
+ *                 self.buy_orders[j].price < temp.price or
+ *                 (self.buy_orders[j].price == temp.price and
+ *                  self.buy_orders[j].sequence > temp.sequence)             # <<<<<<<<<<<<<<
+ *             ):
+ *                 self.buy_orders[j + 1] = self.buy_orders[j]
+*/
+      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).sequence > __pyx_v_temp.sequence);
+
+
+      __pyx_t_4 = __pyx_t_5;
+
+      __pyx_L7_bool_binop_done:;
+
+      if (!__pyx_t_4) break;
+
+      /* "cython_engine.pyx":136
+ *                  self.buy_orders[j].sequence > temp.sequence)
+ *             ):
+ *                 self.buy_orders[j + 1] = self.buy_orders[j]             # <<<<<<<<<<<<<<
+ *                 j -= 1
+ * 
+*/
+      (__pyx_v_self->buy_orders[(__pyx_v_j + 1)]) = (__pyx_v_self->buy_orders[__pyx_v_j]);
+
+      /* "cython_engine.pyx":137
+ *             ):
+ *                 self.buy_orders[j + 1] = self.buy_orders[j]
+ *                 j -= 1             # <<<<<<<<<<<<<<
+ * 
+ *             self.buy_orders[j + 1] = temp
+*/
+      __pyx_v_j = (__pyx_v_j - 1);
+    }
+
+    /* "cython_engine.pyx":139
+ *                 j -= 1
+ * 
+ *             self.buy_orders[j + 1] = temp             # <<<<<<<<<<<<<<
+ * 
+ *     cdef void _sort_sell_orders(self):
+*/
+    (__pyx_v_self->buy_orders[(__pyx_v_j + 1)]) = __pyx_v_temp;
+  }
+
+
+  /* "cython_engine.pyx":123
+ *         return self.trades.copy()
+ * 
+ *     cdef void _sort_buy_orders(self):             # <<<<<<<<<<<<<<
+ *         cdef int i, j
+ *         cdef Order temp
+*/
+
+  /* function exit code */
+
+
+
+
+}
+
+/* "cython_engine.pyx":141
+ *             self.buy_orders[j + 1] = temp
+ * 
+ *     cdef void _sort_sell_orders(self):             # <<<<<<<<<<<<<<
+ *         cdef int i, j
+ *         cdef Order temp
+*/
+
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__sort_sell_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
+  int __pyx_v_i;
+  int __pyx_v_j;
+  struct __pyx_t_13cython_engine_Order __pyx_v_temp;
+  int __pyx_t_1;
+  int __pyx_t_2;
+  int __pyx_t_3;
+  int __pyx_t_4;
+  int __pyx_t_5;
+
+  /* "cython_engine.pyx":145
+ *         cdef Order temp
+ * 
+ *         for i in range(1, self.sell_count):             # <<<<<<<<<<<<<<
+ *             temp = self.sell_orders[i]
+ *             j = i - 1
+*/
+
+  __pyx_t_1 = __pyx_v_self->sell_count;
+  __pyx_t_2 = __pyx_t_1;
+
+  for (__pyx_t_3 = 1; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
+    __pyx_v_i = __pyx_t_3;
+
+    /* "cython_engine.pyx":146
+ * 
+ *         for i in range(1, self.sell_count):
+ *             temp = self.sell_orders[i]             # <<<<<<<<<<<<<<
+ *             j = i - 1
+ * 
+*/
+    __pyx_v_temp = (__pyx_v_self->sell_orders[__pyx_v_i]);
+
+    /* "cython_engine.pyx":147
+ *         for i in range(1, self.sell_count):
+ *             temp = self.sell_orders[i]
+ *             j = i - 1             # <<<<<<<<<<<<<<
+ * 
+ *             while j >= 0 and (
+*/
+    __pyx_v_j = (__pyx_v_i - 1);
+
+    /* "cython_engine.pyx":149
+ *             j = i - 1
+ * 
+ *             while j >= 0 and (             # <<<<<<<<<<<<<<
+ *                 self.sell_orders[j].price > temp.price or
+ *                 (self.sell_orders[j].price == temp.price and
+*/
+    while (1) {
+      __pyx_t_5 = (__pyx_v_j >= 0);
+
+      if (__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":150
+ * 
+ *             while j >= 0 and (
+ *                 self.sell_orders[j].price > temp.price or             # <<<<<<<<<<<<<<
+ *                 (self.sell_orders[j].price == temp.price and
+ *                  self.sell_orders[j].sequence > temp.sequence)
+*/
+      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).price > __pyx_v_temp.price);
+
+      if (!__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":151
+ *             while j >= 0 and (
+ *                 self.sell_orders[j].price > temp.price or
+ *                 (self.sell_orders[j].price == temp.price and             # <<<<<<<<<<<<<<
+ *                  self.sell_orders[j].sequence > temp.sequence)
+ *             ):
+*/
+      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).price == __pyx_v_temp.price);
+
+      if (__pyx_t_5) {
+
+      } else {
+
+        __pyx_t_4 = __pyx_t_5;
+
+        goto __pyx_L7_bool_binop_done;
+      }
+
+      /* "cython_engine.pyx":152
+ *                 self.sell_orders[j].price > temp.price or
+ *                 (self.sell_orders[j].price == temp.price and
+ *                  self.sell_orders[j].sequence > temp.sequence)             # <<<<<<<<<<<<<<
+ *             ):
+ *                 self.sell_orders[j + 1] = self.sell_orders[j]
+*/
+      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).sequence > __pyx_v_temp.sequence);
+
+
+      __pyx_t_4 = __pyx_t_5;
+
+      __pyx_L7_bool_binop_done:;
+
+      if (!__pyx_t_4) break;
+
+      /* "cython_engine.pyx":154
+ *                  self.sell_orders[j].sequence > temp.sequence)
+ *             ):
+ *                 self.sell_orders[j + 1] = self.sell_orders[j]             # <<<<<<<<<<<<<<
+ *                 j -= 1
+ * 
+*/
+      (__pyx_v_self->sell_orders[(__pyx_v_j + 1)]) = (__pyx_v_self->sell_orders[__pyx_v_j]);
+
+      /* "cython_engine.pyx":155
+ *             ):
+ *                 self.sell_orders[j + 1] = self.sell_orders[j]
+ *                 j -= 1             # <<<<<<<<<<<<<<
+ * 
+ *             self.sell_orders[j + 1] = temp
+*/
+      __pyx_v_j = (__pyx_v_j - 1);
+    }
+
+    /* "cython_engine.pyx":157
+ *                 j -= 1
+ * 
+ *             self.sell_orders[j + 1] = temp             # <<<<<<<<<<<<<<
+ * 
+ * 
+*/
+    (__pyx_v_self->sell_orders[(__pyx_v_j + 1)]) = __pyx_v_temp;
+  }
+
+
+  /* "cython_engine.pyx":141
+ *             self.buy_orders[j + 1] = temp
+ * 
+ *     cdef void _sort_sell_orders(self):             # <<<<<<<<<<<<<<
+ *         cdef int i, j
+ *         cdef Order temp
+*/
+
+  /* function exit code */
+
+
+
+
+}
+
+/* "cython_engine.pyx":160
+ * 
+ * 
+ *     cdef void _execute_matching(self):             # <<<<<<<<<<<<<<
+ *         cdef int i
+ *         cdef Order buy
+*/
+
+static void __pyx_f_13cython_engine_20CythonMatchingEngine__execute_matching(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
+  int __pyx_v_i;
+  struct __pyx_t_13cython_engine_Order __pyx_v_buy;
+  struct __pyx_t_13cython_engine_Order __pyx_v_sell;
+  int __pyx_v_trade_quantity;
+  int __pyx_v_buy_remaining;
+  int __pyx_v_sell_remaining;
+  __Pyx_RefNannyDeclarations
+  int __pyx_t_1;
+  int __pyx_t_2;
+  int __pyx_t_3;
+  int __pyx_t_4;
+  int __pyx_t_5;
+  PyObject *__pyx_t_6 = NULL;
+  PyObject *__pyx_t_7 = NULL;
+  PyObject *__pyx_t_8 = NULL;
+  PyObject *__pyx_t_9 = NULL;
+  PyObject *__pyx_t_10 = NULL;
+  int __pyx_t_11;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  __Pyx_RefNannySetupContext("_execute_matching", 0);
+
+  /* "cython_engine.pyx":168
+ *         cdef int sell_remaining
+ * 
+ *         while self.buy_count > 0 and self.sell_count > 0:             # <<<<<<<<<<<<<<
+ *             buy = self.buy_orders[0]
+ *             sell = self.sell_orders[0]
+*/
+  while (1) {
+    __pyx_t_2 = (__pyx_v_self->buy_count > 0);
+
+    if (__pyx_t_2) {
+
+    } else {
+
+      __pyx_t_1 = __pyx_t_2;
+
+      goto __pyx_L5_bool_binop_done;
+    }
+    __pyx_t_2 = (__pyx_v_self->sell_count > 0);
+
+
+    __pyx_t_1 = __pyx_t_2;
+
+    __pyx_L5_bool_binop_done:;
+
+    if (!__pyx_t_1) break;
+
+    /* "cython_engine.pyx":169
+ * 
+ *         while self.buy_count > 0 and self.sell_count > 0:
+ *             buy = self.buy_orders[0]             # <<<<<<<<<<<<<<
+ *             sell = self.sell_orders[0]
+ * 
+*/
+    __pyx_v_buy = (__pyx_v_self->buy_orders[0]);
+
+    /* "cython_engine.pyx":170
+ *         while self.buy_count > 0 and self.sell_count > 0:
+ *             buy = self.buy_orders[0]
+ *             sell = self.sell_orders[0]             # <<<<<<<<<<<<<<
+ * 
+ *             if buy.price < sell.price:
+*/
+    __pyx_v_sell = (__pyx_v_self->sell_orders[0]);
+
+    /* "cython_engine.pyx":172
+ *             sell = self.sell_orders[0]
+ * 
+ *             if buy.price < sell.price:             # <<<<<<<<<<<<<<
+ *                 break
+ * 
+*/
+    __pyx_t_1 = (__pyx_v_buy.price < __pyx_v_sell.price);
+
+    if (__pyx_t_1) {
+
+
+      /* "cython_engine.pyx":173
+ * 
+ *             if buy.price < sell.price:
+ *                 break             # <<<<<<<<<<<<<<
+ * 
+ *             trade_quantity = min(buy.quantity, sell.quantity)
+*/
+      goto __pyx_L4_break;
+
+      /* "cython_engine.pyx":172
+ *             sell = self.sell_orders[0]
+ * 
+ *             if buy.price < sell.price:             # <<<<<<<<<<<<<<
+ *                 break
+ * 
+*/
+    }
+
+    /* "cython_engine.pyx":175
+ *                 break
+ * 
+ *             trade_quantity = min(buy.quantity, sell.quantity)             # <<<<<<<<<<<<<<
+ * 
+ *             self.trades.append(
+*/
+
+    __pyx_t_3 = __pyx_v_sell.quantity;
+
+    __pyx_t_4 = __pyx_v_buy.quantity;
+    __pyx_t_1 = (__pyx_t_3 < __pyx_t_4);
+
+    if (__pyx_t_1) {
+
+      __pyx_t_5 = __pyx_t_3;
+    } else {
+
+      __pyx_t_5 = __pyx_t_4;
+    }
+
+    __pyx_v_trade_quantity = __pyx_t_5;
+
+
+    /* "cython_engine.pyx":177
+ *             trade_quantity = min(buy.quantity, sell.quantity)
+ * 
+ *             self.trades.append(             # <<<<<<<<<<<<<<
+ *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
+ *             )
+*/
+    if (unlikely(__pyx_v_self->trades == Py_None)) {
+      PyErr_Format(PyExc_AttributeError, "\047NoneType\047 object has no attribute \047%.30s\047", "append");
+      __PYX_ERR(0, 177, __pyx_L1_error)
+    }
+
+    /* "cython_engine.pyx":178
+ * 
+ *             self.trades.append(
+ *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)             # <<<<<<<<<<<<<<
+ *             )
+ * 
+*/
+    __pyx_t_6 = __Pyx_PyLong_From_int(__pyx_v_buy.order_id); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 178, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_6);
+    __pyx_t_7 = __Pyx_PyLong_From_int(__pyx_v_sell.order_id); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 178, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_7);
+    __pyx_t_8 = __Pyx_PyLong_From_int(__pyx_v_sell.price); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 178, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_8);
+    __pyx_t_9 = __Pyx_PyLong_From_int(__pyx_v_trade_quantity); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 178, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_9);
+    __pyx_t_10 = PyTuple_New(4); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 178, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_10);
+    __Pyx_GIVEREF(__pyx_t_6);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 0, __pyx_t_6) != (0)) __PYX_ERR(0, 178, __pyx_L1_error);
+    __Pyx_GIVEREF(__pyx_t_7);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 1, __pyx_t_7) != (0)) __PYX_ERR(0, 178, __pyx_L1_error);
+    __Pyx_GIVEREF(__pyx_t_8);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 2, __pyx_t_8) != (0)) __PYX_ERR(0, 178, __pyx_L1_error);
+    __Pyx_GIVEREF(__pyx_t_9);
+    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 3, __pyx_t_9) != (0)) __PYX_ERR(0, 178, __pyx_L1_error);
+    __pyx_t_6 = 0;
+    __pyx_t_7 = 0;
+    __pyx_t_8 = 0;
+    __pyx_t_9 = 0;
+
+    /* "cython_engine.pyx":177
+ *             trade_quantity = min(buy.quantity, sell.quantity)
+ * 
+ *             self.trades.append(             # <<<<<<<<<<<<<<
+ *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
+ *             )
+*/
+    __pyx_t_11 = __Pyx_PyList_Append(__pyx_v_self->trades, __pyx_t_10); if (unlikely(__pyx_t_11 == ((int)-1))) __PYX_ERR(0, 177, __pyx_L1_error)
+    __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
+
+
+    /* "cython_engine.pyx":181
+ *             )
+ * 
+ *             buy_remaining = buy.quantity - trade_quantity             # <<<<<<<<<<<<<<
+ *             sell_remaining = sell.quantity - trade_quantity
+ * 
+*/
+    __pyx_v_buy_remaining = (__pyx_v_buy.quantity - __pyx_v_trade_quantity);
+
+    /* "cython_engine.pyx":182
+ * 
+ *             buy_remaining = buy.quantity - trade_quantity
+ *             sell_remaining = sell.quantity - trade_quantity             # <<<<<<<<<<<<<<
+ * 
+ *             if buy_remaining == 0:
+*/
+    __pyx_v_sell_remaining = (__pyx_v_sell.quantity - __pyx_v_trade_quantity);
+
+    /* "cython_engine.pyx":184
+ *             sell_remaining = sell.quantity - trade_quantity
+ * 
+ *             if buy_remaining == 0:             # <<<<<<<<<<<<<<
+ *                 for i in range(1, self.buy_count):
+ *                     self.buy_orders[i - 1] = self.buy_orders[i]
+*/
+    __pyx_t_1 = (__pyx_v_buy_remaining == 0);
+
+    if (__pyx_t_1) {
+
+
+      /* "cython_engine.pyx":185
+ * 
+ *             if buy_remaining == 0:
+ *                 for i in range(1, self.buy_count):             # <<<<<<<<<<<<<<
+ *                     self.buy_orders[i - 1] = self.buy_orders[i]
+ *                 self.buy_count -= 1
+*/
+
+      __pyx_t_5 = __pyx_v_self->buy_count;
+      __pyx_t_3 = __pyx_t_5;
+
+      for (__pyx_t_4 = 1; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
+        __pyx_v_i = __pyx_t_4;
+
+        /* "cython_engine.pyx":186
+ *             if buy_remaining == 0:
+ *                 for i in range(1, self.buy_count):
+ *                     self.buy_orders[i - 1] = self.buy_orders[i]             # <<<<<<<<<<<<<<
+ *                 self.buy_count -= 1
+ *             else:
+*/
+        (__pyx_v_self->buy_orders[(__pyx_v_i - 1)]) = (__pyx_v_self->buy_orders[__pyx_v_i]);
+      }
+
+
+      /* "cython_engine.pyx":187
+ *                 for i in range(1, self.buy_count):
+ *                     self.buy_orders[i - 1] = self.buy_orders[i]
+ *                 self.buy_count -= 1             # <<<<<<<<<<<<<<
+ *             else:
+ *                 self.buy_orders[0].quantity = buy_remaining
+*/
+      __pyx_v_self->buy_count = (__pyx_v_self->buy_count - 1);
+
+      /* "cython_engine.pyx":184
+ *             sell_remaining = sell.quantity - trade_quantity
+ * 
+ *             if buy_remaining == 0:             # <<<<<<<<<<<<<<
+ *                 for i in range(1, self.buy_count):
+ *                     self.buy_orders[i - 1] = self.buy_orders[i]
+*/
+      goto __pyx_L8;
+    }
+
+    /* "cython_engine.pyx":189
+ *                 self.buy_count -= 1
+ *             else:
+ *                 self.buy_orders[0].quantity = buy_remaining             # <<<<<<<<<<<<<<
+ * 
+ *             if sell_remaining == 0:
+*/
+    /*else*/ {
+      (__pyx_v_self->buy_orders[0]).quantity = __pyx_v_buy_remaining;
+    }
+    __pyx_L8:;
+
+    /* "cython_engine.pyx":191
+ *                 self.buy_orders[0].quantity = buy_remaining
+ * 
+ *             if sell_remaining == 0:             # <<<<<<<<<<<<<<
+ *                 for i in range(1, self.sell_count):
+ *                     self.sell_orders[i - 1] = self.sell_orders[i]
+*/
+    __pyx_t_1 = (__pyx_v_sell_remaining == 0);
+
+    if (__pyx_t_1) {
+
+
+      /* "cython_engine.pyx":192
+ * 
+ *             if sell_remaining == 0:
+ *                 for i in range(1, self.sell_count):             # <<<<<<<<<<<<<<
+ *                     self.sell_orders[i - 1] = self.sell_orders[i]
+ *                 self.sell_count -= 1
+*/
+
+      __pyx_t_5 = __pyx_v_self->sell_count;
+      __pyx_t_3 = __pyx_t_5;
+
+      for (__pyx_t_4 = 1; __pyx_t_4 < __pyx_t_3; __pyx_t_4+=1) {
+        __pyx_v_i = __pyx_t_4;
+
+        /* "cython_engine.pyx":193
+ *             if sell_remaining == 0:
+ *                 for i in range(1, self.sell_count):
+ *                     self.sell_orders[i - 1] = self.sell_orders[i]             # <<<<<<<<<<<<<<
+ *                 self.sell_count -= 1
+ *             else:
+*/
+        (__pyx_v_self->sell_orders[(__pyx_v_i - 1)]) = (__pyx_v_self->sell_orders[__pyx_v_i]);
+      }
+
+
+      /* "cython_engine.pyx":194
+ *                 for i in range(1, self.sell_count):
+ *                     self.sell_orders[i - 1] = self.sell_orders[i]
+ *                 self.sell_count -= 1             # <<<<<<<<<<<<<<
+ *             else:
+ *                 self.sell_orders[0].quantity = sell_remaining
+*/
+      __pyx_v_self->sell_count = (__pyx_v_self->sell_count - 1);
+
+      /* "cython_engine.pyx":191
+ *                 self.buy_orders[0].quantity = buy_remaining
+ * 
+ *             if sell_remaining == 0:             # <<<<<<<<<<<<<<
+ *                 for i in range(1, self.sell_count):
+ *                     self.sell_orders[i - 1] = self.sell_orders[i]
+*/
+      goto __pyx_L11;
+    }
+
+    /* "cython_engine.pyx":196
+ *                 self.sell_count -= 1
+ *             else:
+ *                 self.sell_orders[0].quantity = sell_remaining             # <<<<<<<<<<<<<<
+ * 
+ * 
+*/
+    /*else*/ {
+      (__pyx_v_self->sell_orders[0]).quantity = __pyx_v_sell_remaining;
+    }
+    __pyx_L11:;
+  }
+  __pyx_L4_break:;
+
+  /* "cython_engine.pyx":160
+ * 
+ * 
+ *     cdef void _execute_matching(self):             # <<<<<<<<<<<<<<
+ *         cdef int i
+ *         cdef Order buy
+*/
+
+  /* function exit code */
+  goto __pyx_L0;
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_6);
+  __Pyx_XDECREF(__pyx_t_7);
+  __Pyx_XDECREF(__pyx_t_8);
+  __Pyx_XDECREF(__pyx_t_9);
+  __Pyx_XDECREF(__pyx_t_10);
+  __Pyx_AddTraceback("cython_engine.CythonMatchingEngine._execute_matching", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_L0:;
+
+
+
+
+
+
+
+  __Pyx_RefNannyFinishContext();
+}
+
+/* "cython_engine.pyx":199
+ * 
+ * 
+ *     def match_orders(self):             # <<<<<<<<<<<<<<
+ *         self._sort_buy_orders()
+ *         self._sort_sell_orders()
 */
 
 /* Python wrapper */
@@ -4531,632 +5270,343 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
 }
 
 static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_12match_orders(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
-  int __pyx_v_i;
-  int __pyx_v_j;
-  struct __pyx_t_13cython_engine_Order __pyx_v_temp;
-  struct __pyx_t_13cython_engine_Order __pyx_v_buy;
-  struct __pyx_t_13cython_engine_Order __pyx_v_sell;
-  int __pyx_v_trade_quantity;
-  int __pyx_v_buy_remaining;
-  int __pyx_v_sell_remaining;
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
-  int __pyx_t_1;
-  int __pyx_t_2;
-  int __pyx_t_3;
-  int __pyx_t_4;
-  int __pyx_t_5;
-  PyObject *__pyx_t_6 = NULL;
-  PyObject *__pyx_t_7 = NULL;
-  PyObject *__pyx_t_8 = NULL;
-  PyObject *__pyx_t_9 = NULL;
-  PyObject *__pyx_t_10 = NULL;
-  int __pyx_t_11;
   int __pyx_lineno = 0;
   const char *__pyx_filename = NULL;
   int __pyx_clineno = 0;
   __Pyx_RefNannySetupContext("match_orders", 0);
 
-  /* "cython_engine.pyx":133
+  /* "cython_engine.pyx":200
  * 
- *         # Sort BUY orders: highest price first, then earliest sequence.
- *         for i in range(1, self.buy_count):             # <<<<<<<<<<<<<<
- *             temp = self.buy_orders[i]
- *             j = i - 1
+ *     def match_orders(self):
+ *         self._sort_buy_orders()             # <<<<<<<<<<<<<<
+ *         self._sort_sell_orders()
+ *         self._execute_matching()
 */
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_sort_buy_orders(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 200, __pyx_L1_error)
 
-  __pyx_t_1 = __pyx_v_self->buy_count;
-  __pyx_t_2 = __pyx_t_1;
-
-  for (__pyx_t_3 = 1; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
-    __pyx_v_i = __pyx_t_3;
-
-    /* "cython_engine.pyx":134
- *         # Sort BUY orders: highest price first, then earliest sequence.
- *         for i in range(1, self.buy_count):
- *             temp = self.buy_orders[i]             # <<<<<<<<<<<<<<
- *             j = i - 1
- *             while j >= 0 and (
-*/
-    __pyx_v_temp = (__pyx_v_self->buy_orders[__pyx_v_i]);
-
-    /* "cython_engine.pyx":135
- *         for i in range(1, self.buy_count):
- *             temp = self.buy_orders[i]
- *             j = i - 1             # <<<<<<<<<<<<<<
- *             while j >= 0 and (
- *                 self.buy_orders[j].price < temp.price or
-*/
-    __pyx_v_j = (__pyx_v_i - 1);
-
-    /* "cython_engine.pyx":136
- *             temp = self.buy_orders[i]
- *             j = i - 1
- *             while j >= 0 and (             # <<<<<<<<<<<<<<
- *                 self.buy_orders[j].price < temp.price or
- *                 (self.buy_orders[j].price == temp.price and
-*/
-    while (1) {
-      __pyx_t_5 = (__pyx_v_j >= 0);
-
-      if (__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L7_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":137
- *             j = i - 1
- *             while j >= 0 and (
- *                 self.buy_orders[j].price < temp.price or             # <<<<<<<<<<<<<<
- *                 (self.buy_orders[j].price == temp.price and
- *                  self.buy_orders[j].sequence > temp.sequence)
-*/
-      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).price < __pyx_v_temp.price);
-
-      if (!__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L7_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":138
- *             while j >= 0 and (
- *                 self.buy_orders[j].price < temp.price or
- *                 (self.buy_orders[j].price == temp.price and             # <<<<<<<<<<<<<<
- *                  self.buy_orders[j].sequence > temp.sequence)
- *             ):
-*/
-      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).price == __pyx_v_temp.price);
-
-      if (__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L7_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":139
- *                 self.buy_orders[j].price < temp.price or
- *                 (self.buy_orders[j].price == temp.price and
- *                  self.buy_orders[j].sequence > temp.sequence)             # <<<<<<<<<<<<<<
- *             ):
- *                 self.buy_orders[j + 1] = self.buy_orders[j]
-*/
-      __pyx_t_5 = ((__pyx_v_self->buy_orders[__pyx_v_j]).sequence > __pyx_v_temp.sequence);
-
-
-      __pyx_t_4 = __pyx_t_5;
-
-      __pyx_L7_bool_binop_done:;
-
-      if (!__pyx_t_4) break;
-
-      /* "cython_engine.pyx":141
- *                  self.buy_orders[j].sequence > temp.sequence)
- *             ):
- *                 self.buy_orders[j + 1] = self.buy_orders[j]             # <<<<<<<<<<<<<<
- *                 j -= 1
- *             self.buy_orders[j + 1] = temp
-*/
-      (__pyx_v_self->buy_orders[(__pyx_v_j + 1)]) = (__pyx_v_self->buy_orders[__pyx_v_j]);
-
-      /* "cython_engine.pyx":142
- *             ):
- *                 self.buy_orders[j + 1] = self.buy_orders[j]
- *                 j -= 1             # <<<<<<<<<<<<<<
- *             self.buy_orders[j + 1] = temp
+  /* "cython_engine.pyx":201
+ *     def match_orders(self):
+ *         self._sort_buy_orders()
+ *         self._sort_sell_orders()             # <<<<<<<<<<<<<<
+ *         self._execute_matching()
  * 
 */
-      __pyx_v_j = (__pyx_v_j - 1);
-    }
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_sort_sell_orders(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 201, __pyx_L1_error)
 
-    /* "cython_engine.pyx":143
- *                 self.buy_orders[j + 1] = self.buy_orders[j]
- *                 j -= 1
- *             self.buy_orders[j + 1] = temp             # <<<<<<<<<<<<<<
+  /* "cython_engine.pyx":202
+ *         self._sort_buy_orders()
+ *         self._sort_sell_orders()
+ *         self._execute_matching()             # <<<<<<<<<<<<<<
  * 
- *         # Sort SELL orders: lowest price first, then earliest sequence.
+ *     def profile_stages(self):
 */
-    (__pyx_v_self->buy_orders[(__pyx_v_j + 1)]) = __pyx_v_temp;
-  }
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_execute_matching(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 202, __pyx_L1_error)
 
-
-  /* "cython_engine.pyx":146
+  /* "cython_engine.pyx":199
  * 
- *         # Sort SELL orders: lowest price first, then earliest sequence.
- *         for i in range(1, self.sell_count):             # <<<<<<<<<<<<<<
- *             temp = self.sell_orders[i]
- *             j = i - 1
-*/
-
-  __pyx_t_1 = __pyx_v_self->sell_count;
-  __pyx_t_2 = __pyx_t_1;
-
-  for (__pyx_t_3 = 1; __pyx_t_3 < __pyx_t_2; __pyx_t_3+=1) {
-    __pyx_v_i = __pyx_t_3;
-
-    /* "cython_engine.pyx":147
- *         # Sort SELL orders: lowest price first, then earliest sequence.
- *         for i in range(1, self.sell_count):
- *             temp = self.sell_orders[i]             # <<<<<<<<<<<<<<
- *             j = i - 1
- *             while j >= 0 and (
-*/
-    __pyx_v_temp = (__pyx_v_self->sell_orders[__pyx_v_i]);
-
-    /* "cython_engine.pyx":148
- *         for i in range(1, self.sell_count):
- *             temp = self.sell_orders[i]
- *             j = i - 1             # <<<<<<<<<<<<<<
- *             while j >= 0 and (
- *                 self.sell_orders[j].price > temp.price or
-*/
-    __pyx_v_j = (__pyx_v_i - 1);
-
-    /* "cython_engine.pyx":149
- *             temp = self.sell_orders[i]
- *             j = i - 1
- *             while j >= 0 and (             # <<<<<<<<<<<<<<
- *                 self.sell_orders[j].price > temp.price or
- *                 (self.sell_orders[j].price == temp.price and
-*/
-    while (1) {
-      __pyx_t_5 = (__pyx_v_j >= 0);
-
-      if (__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L15_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":150
- *             j = i - 1
- *             while j >= 0 and (
- *                 self.sell_orders[j].price > temp.price or             # <<<<<<<<<<<<<<
- *                 (self.sell_orders[j].price == temp.price and
- *                  self.sell_orders[j].sequence > temp.sequence)
-*/
-      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).price > __pyx_v_temp.price);
-
-      if (!__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L15_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":151
- *             while j >= 0 and (
- *                 self.sell_orders[j].price > temp.price or
- *                 (self.sell_orders[j].price == temp.price and             # <<<<<<<<<<<<<<
- *                  self.sell_orders[j].sequence > temp.sequence)
- *             ):
-*/
-      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).price == __pyx_v_temp.price);
-
-      if (__pyx_t_5) {
-
-      } else {
-
-        __pyx_t_4 = __pyx_t_5;
-
-        goto __pyx_L15_bool_binop_done;
-      }
-
-      /* "cython_engine.pyx":152
- *                 self.sell_orders[j].price > temp.price or
- *                 (self.sell_orders[j].price == temp.price and
- *                  self.sell_orders[j].sequence > temp.sequence)             # <<<<<<<<<<<<<<
- *             ):
- *                 self.sell_orders[j + 1] = self.sell_orders[j]
-*/
-      __pyx_t_5 = ((__pyx_v_self->sell_orders[__pyx_v_j]).sequence > __pyx_v_temp.sequence);
-
-
-      __pyx_t_4 = __pyx_t_5;
-
-      __pyx_L15_bool_binop_done:;
-
-      if (!__pyx_t_4) break;
-
-      /* "cython_engine.pyx":154
- *                  self.sell_orders[j].sequence > temp.sequence)
- *             ):
- *                 self.sell_orders[j + 1] = self.sell_orders[j]             # <<<<<<<<<<<<<<
- *                 j -= 1
- *             self.sell_orders[j + 1] = temp
-*/
-      (__pyx_v_self->sell_orders[(__pyx_v_j + 1)]) = (__pyx_v_self->sell_orders[__pyx_v_j]);
-
-      /* "cython_engine.pyx":155
- *             ):
- *                 self.sell_orders[j + 1] = self.sell_orders[j]
- *                 j -= 1             # <<<<<<<<<<<<<<
- *             self.sell_orders[j + 1] = temp
- * 
-*/
-      __pyx_v_j = (__pyx_v_j - 1);
-    }
-
-    /* "cython_engine.pyx":156
- *                 self.sell_orders[j + 1] = self.sell_orders[j]
- *                 j -= 1
- *             self.sell_orders[j + 1] = temp             # <<<<<<<<<<<<<<
- * 
- *         while self.buy_count > 0 and self.sell_count > 0:
-*/
-    (__pyx_v_self->sell_orders[(__pyx_v_j + 1)]) = __pyx_v_temp;
-  }
-
-
-  /* "cython_engine.pyx":158
- *             self.sell_orders[j + 1] = temp
- * 
- *         while self.buy_count > 0 and self.sell_count > 0:             # <<<<<<<<<<<<<<
- *             buy = self.buy_orders[0]
- *             sell = self.sell_orders[0]
-*/
-  while (1) {
-    __pyx_t_5 = (__pyx_v_self->buy_count > 0);
-
-    if (__pyx_t_5) {
-
-    } else {
-
-      __pyx_t_4 = __pyx_t_5;
-
-      goto __pyx_L21_bool_binop_done;
-    }
-    __pyx_t_5 = (__pyx_v_self->sell_count > 0);
-
-
-    __pyx_t_4 = __pyx_t_5;
-
-    __pyx_L21_bool_binop_done:;
-
-    if (!__pyx_t_4) break;
-
-    /* "cython_engine.pyx":159
- * 
- *         while self.buy_count > 0 and self.sell_count > 0:
- *             buy = self.buy_orders[0]             # <<<<<<<<<<<<<<
- *             sell = self.sell_orders[0]
- * 
-*/
-    __pyx_v_buy = (__pyx_v_self->buy_orders[0]);
-
-    /* "cython_engine.pyx":160
- *         while self.buy_count > 0 and self.sell_count > 0:
- *             buy = self.buy_orders[0]
- *             sell = self.sell_orders[0]             # <<<<<<<<<<<<<<
- * 
- *             if buy.price < sell.price:
-*/
-    __pyx_v_sell = (__pyx_v_self->sell_orders[0]);
-
-    /* "cython_engine.pyx":162
- *             sell = self.sell_orders[0]
- * 
- *             if buy.price < sell.price:             # <<<<<<<<<<<<<<
- *                 break
- * 
-*/
-    __pyx_t_4 = (__pyx_v_buy.price < __pyx_v_sell.price);
-
-    if (__pyx_t_4) {
-
-
-      /* "cython_engine.pyx":163
- * 
- *             if buy.price < sell.price:
- *                 break             # <<<<<<<<<<<<<<
- * 
- *             trade_quantity = min(buy.quantity, sell.quantity)
-*/
-      goto __pyx_L20_break;
-
-      /* "cython_engine.pyx":162
- *             sell = self.sell_orders[0]
- * 
- *             if buy.price < sell.price:             # <<<<<<<<<<<<<<
- *                 break
- * 
-*/
-    }
-
-    /* "cython_engine.pyx":165
- *                 break
- * 
- *             trade_quantity = min(buy.quantity, sell.quantity)             # <<<<<<<<<<<<<<
- *             self.trades.append(
- *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
-*/
-
-    __pyx_t_1 = __pyx_v_sell.quantity;
-
-    __pyx_t_2 = __pyx_v_buy.quantity;
-    __pyx_t_4 = (__pyx_t_1 < __pyx_t_2);
-
-    if (__pyx_t_4) {
-
-      __pyx_t_3 = __pyx_t_1;
-    } else {
-
-      __pyx_t_3 = __pyx_t_2;
-    }
-
-    __pyx_v_trade_quantity = __pyx_t_3;
-
-
-    /* "cython_engine.pyx":166
- * 
- *             trade_quantity = min(buy.quantity, sell.quantity)
- *             self.trades.append(             # <<<<<<<<<<<<<<
- *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
- *             )
-*/
-    if (unlikely(__pyx_v_self->trades == Py_None)) {
-      PyErr_Format(PyExc_AttributeError, "\047NoneType\047 object has no attribute \047%.30s\047", "append");
-      __PYX_ERR(0, 166, __pyx_L1_error)
-    }
-
-    /* "cython_engine.pyx":167
- *             trade_quantity = min(buy.quantity, sell.quantity)
- *             self.trades.append(
- *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)             # <<<<<<<<<<<<<<
- *             )
- * 
-*/
-    __pyx_t_6 = __Pyx_PyLong_From_int(__pyx_v_buy.order_id); if (unlikely(!__pyx_t_6)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_6);
-    __pyx_t_7 = __Pyx_PyLong_From_int(__pyx_v_sell.order_id); if (unlikely(!__pyx_t_7)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_7);
-    __pyx_t_8 = __Pyx_PyLong_From_int(__pyx_v_sell.price); if (unlikely(!__pyx_t_8)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_8);
-    __pyx_t_9 = __Pyx_PyLong_From_int(__pyx_v_trade_quantity); if (unlikely(!__pyx_t_9)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_9);
-    __pyx_t_10 = PyTuple_New(4); if (unlikely(!__pyx_t_10)) __PYX_ERR(0, 167, __pyx_L1_error)
-    __Pyx_GOTREF(__pyx_t_10);
-    __Pyx_GIVEREF(__pyx_t_6);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 0, __pyx_t_6) != (0)) __PYX_ERR(0, 167, __pyx_L1_error);
-    __Pyx_GIVEREF(__pyx_t_7);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 1, __pyx_t_7) != (0)) __PYX_ERR(0, 167, __pyx_L1_error);
-    __Pyx_GIVEREF(__pyx_t_8);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 2, __pyx_t_8) != (0)) __PYX_ERR(0, 167, __pyx_L1_error);
-    __Pyx_GIVEREF(__pyx_t_9);
-    if (__Pyx_PyTuple_SET_ITEM(__pyx_t_10, 3, __pyx_t_9) != (0)) __PYX_ERR(0, 167, __pyx_L1_error);
-    __pyx_t_6 = 0;
-    __pyx_t_7 = 0;
-    __pyx_t_8 = 0;
-    __pyx_t_9 = 0;
-
-    /* "cython_engine.pyx":166
- * 
- *             trade_quantity = min(buy.quantity, sell.quantity)
- *             self.trades.append(             # <<<<<<<<<<<<<<
- *                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
- *             )
-*/
-    __pyx_t_11 = __Pyx_PyList_Append(__pyx_v_self->trades, __pyx_t_10); if (unlikely(__pyx_t_11 == ((int)-1))) __PYX_ERR(0, 166, __pyx_L1_error)
-    __Pyx_DECREF(__pyx_t_10); __pyx_t_10 = 0;
-
-
-    /* "cython_engine.pyx":170
- *             )
- * 
- *             buy_remaining = buy.quantity - trade_quantity             # <<<<<<<<<<<<<<
- *             sell_remaining = sell.quantity - trade_quantity
- * 
-*/
-    __pyx_v_buy_remaining = (__pyx_v_buy.quantity - __pyx_v_trade_quantity);
-
-    /* "cython_engine.pyx":171
- * 
- *             buy_remaining = buy.quantity - trade_quantity
- *             sell_remaining = sell.quantity - trade_quantity             # <<<<<<<<<<<<<<
- * 
- *             if buy_remaining == 0:
-*/
-    __pyx_v_sell_remaining = (__pyx_v_sell.quantity - __pyx_v_trade_quantity);
-
-    /* "cython_engine.pyx":173
- *             sell_remaining = sell.quantity - trade_quantity
- * 
- *             if buy_remaining == 0:             # <<<<<<<<<<<<<<
- *                 for i in range(1, self.buy_count):
- *                     self.buy_orders[i - 1] = self.buy_orders[i]
-*/
-    __pyx_t_4 = (__pyx_v_buy_remaining == 0);
-
-    if (__pyx_t_4) {
-
-
-      /* "cython_engine.pyx":174
- * 
- *             if buy_remaining == 0:
- *                 for i in range(1, self.buy_count):             # <<<<<<<<<<<<<<
- *                     self.buy_orders[i - 1] = self.buy_orders[i]
- *                 self.buy_count -= 1
-*/
-
-      __pyx_t_3 = __pyx_v_self->buy_count;
-      __pyx_t_1 = __pyx_t_3;
-
-      for (__pyx_t_2 = 1; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
-        __pyx_v_i = __pyx_t_2;
-
-        /* "cython_engine.pyx":175
- *             if buy_remaining == 0:
- *                 for i in range(1, self.buy_count):
- *                     self.buy_orders[i - 1] = self.buy_orders[i]             # <<<<<<<<<<<<<<
- *                 self.buy_count -= 1
- *             else:
-*/
-        (__pyx_v_self->buy_orders[(__pyx_v_i - 1)]) = (__pyx_v_self->buy_orders[__pyx_v_i]);
-      }
-
-
-      /* "cython_engine.pyx":176
- *                 for i in range(1, self.buy_count):
- *                     self.buy_orders[i - 1] = self.buy_orders[i]
- *                 self.buy_count -= 1             # <<<<<<<<<<<<<<
- *             else:
- *                 self.buy_orders[0].quantity = buy_remaining
-*/
-      __pyx_v_self->buy_count = (__pyx_v_self->buy_count - 1);
-
-      /* "cython_engine.pyx":173
- *             sell_remaining = sell.quantity - trade_quantity
- * 
- *             if buy_remaining == 0:             # <<<<<<<<<<<<<<
- *                 for i in range(1, self.buy_count):
- *                     self.buy_orders[i - 1] = self.buy_orders[i]
-*/
-      goto __pyx_L24;
-    }
-
-    /* "cython_engine.pyx":178
- *                 self.buy_count -= 1
- *             else:
- *                 self.buy_orders[0].quantity = buy_remaining             # <<<<<<<<<<<<<<
- * 
- *             if sell_remaining == 0:
-*/
-    /*else*/ {
-      (__pyx_v_self->buy_orders[0]).quantity = __pyx_v_buy_remaining;
-    }
-    __pyx_L24:;
-
-    /* "cython_engine.pyx":180
- *                 self.buy_orders[0].quantity = buy_remaining
- * 
- *             if sell_remaining == 0:             # <<<<<<<<<<<<<<
- *                 for i in range(1, self.sell_count):
- *                     self.sell_orders[i - 1] = self.sell_orders[i]
-*/
-    __pyx_t_4 = (__pyx_v_sell_remaining == 0);
-
-    if (__pyx_t_4) {
-
-
-      /* "cython_engine.pyx":181
- * 
- *             if sell_remaining == 0:
- *                 for i in range(1, self.sell_count):             # <<<<<<<<<<<<<<
- *                     self.sell_orders[i - 1] = self.sell_orders[i]
- *                 self.sell_count -= 1
-*/
-
-      __pyx_t_3 = __pyx_v_self->sell_count;
-      __pyx_t_1 = __pyx_t_3;
-
-      for (__pyx_t_2 = 1; __pyx_t_2 < __pyx_t_1; __pyx_t_2+=1) {
-        __pyx_v_i = __pyx_t_2;
-
-        /* "cython_engine.pyx":182
- *             if sell_remaining == 0:
- *                 for i in range(1, self.sell_count):
- *                     self.sell_orders[i - 1] = self.sell_orders[i]             # <<<<<<<<<<<<<<
- *                 self.sell_count -= 1
- *             else:
-*/
-        (__pyx_v_self->sell_orders[(__pyx_v_i - 1)]) = (__pyx_v_self->sell_orders[__pyx_v_i]);
-      }
-
-
-      /* "cython_engine.pyx":183
- *                 for i in range(1, self.sell_count):
- *                     self.sell_orders[i - 1] = self.sell_orders[i]
- *                 self.sell_count -= 1             # <<<<<<<<<<<<<<
- *             else:
- *                 self.sell_orders[0].quantity = sell_remaining
-*/
-      __pyx_v_self->sell_count = (__pyx_v_self->sell_count - 1);
-
-      /* "cython_engine.pyx":180
- *                 self.buy_orders[0].quantity = buy_remaining
- * 
- *             if sell_remaining == 0:             # <<<<<<<<<<<<<<
- *                 for i in range(1, self.sell_count):
- *                     self.sell_orders[i - 1] = self.sell_orders[i]
-*/
-      goto __pyx_L27;
-    }
-
-    /* "cython_engine.pyx":185
- *                 self.sell_count -= 1
- *             else:
- *                 self.sell_orders[0].quantity = sell_remaining             # <<<<<<<<<<<<<<
-*/
-    /*else*/ {
-      (__pyx_v_self->sell_orders[0]).quantity = __pyx_v_sell_remaining;
-    }
-    __pyx_L27:;
-  }
-  __pyx_L20_break:;
-
-  /* "cython_engine.pyx":123
- *         return self.trades.copy()
  * 
  *     def match_orders(self):             # <<<<<<<<<<<<<<
- *         cdef int i, j
- *         cdef Order temp
+ *         self._sort_buy_orders()
+ *         self._sort_sell_orders()
 */
 
   /* function exit code */
   __pyx_r = Py_None; __Pyx_INCREF(Py_None);
   goto __pyx_L0;
   __pyx_L1_error:;
-  __Pyx_XDECREF(__pyx_t_6);
-  __Pyx_XDECREF(__pyx_t_7);
-  __Pyx_XDECREF(__pyx_t_8);
-  __Pyx_XDECREF(__pyx_t_9);
-  __Pyx_XDECREF(__pyx_t_10);
   __Pyx_AddTraceback("cython_engine.CythonMatchingEngine.match_orders", __pyx_clineno, __pyx_lineno, __pyx_filename);
   __pyx_r = NULL;
   __pyx_L0:;
+  __Pyx_XGIVEREF(__pyx_r);
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
 
+/* "cython_engine.pyx":204
+ *         self._execute_matching()
+ * 
+ *     def profile_stages(self):             # <<<<<<<<<<<<<<
+ *         import time
+ * 
+*/
 
+/* Python wrapper */
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_15profile_stages(PyObject *__pyx_v_self, 
+#if CYTHON_VECTORCALL
+PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
+#else
+PyObject *__pyx_args, PyObject *__pyx_kwds
+#endif
+); /*proto*/
+static PyMethodDef __pyx_mdef_13cython_engine_20CythonMatchingEngine_15profile_stages = {"profile_stages", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_15profile_stages, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0};
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_15profile_stages(PyObject *__pyx_v_self, 
+#if CYTHON_VECTORCALL
+PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
+#else
+PyObject *__pyx_args, PyObject *__pyx_kwds
+#endif
+) {
+  #if !CYTHON_VECTORCALL
+  CYTHON_UNUSED Py_ssize_t __pyx_nargs;
+  #endif
+  CYTHON_UNUSED PyObject *const *__pyx_kwvalues;
+  PyObject *__pyx_r = 0;
+  __Pyx_RefNannyDeclarations
+  __Pyx_RefNannySetupContext("profile_stages (wrapper)", 0);
+  #if !CYTHON_VECTORCALL
+  #if CYTHON_ASSUME_SAFE_SIZE
+  __pyx_nargs = PyTuple_GET_SIZE(__pyx_args);
+  #else
+  __pyx_nargs = PyTuple_Size(__pyx_args); if (unlikely(__pyx_nargs < 0)) return NULL;
+  #endif
+  #endif
+  __pyx_kwvalues = __Pyx_KwValues_FASTCALL(__pyx_args, __pyx_nargs);
+  if (unlikely(__pyx_nargs > 0)) { __Pyx_RaiseArgtupleInvalid("profile_stages", 1, 0, 0, __pyx_nargs); return NULL; }
+  const Py_ssize_t __pyx_kwds_len = unlikely(__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
+  if (unlikely(__pyx_kwds_len < 0)) return NULL;
+  if (unlikely(__pyx_kwds_len > 0)) {__Pyx_RejectKeywords("profile_stages", __pyx_kwds); return NULL;}
+  __pyx_r = __pyx_pf_13cython_engine_20CythonMatchingEngine_14profile_stages(((struct __pyx_obj_13cython_engine_CythonMatchingEngine *)__pyx_v_self));
 
+  /* function exit code */
+  __Pyx_RefNannyFinishContext();
+  return __pyx_r;
+}
 
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_14profile_stages(struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
+  PyObject *__pyx_v_time = NULL;
+  PyObject *__pyx_v_start = NULL;
+  PyObject *__pyx_v_buy_sort_ns = NULL;
+  PyObject *__pyx_v_sell_sort_ns = NULL;
+  PyObject *__pyx_v_matching_ns = NULL;
+  PyObject *__pyx_r = NULL;
+  __Pyx_RefNannyDeclarations
+  PyObject *__pyx_t_1 = NULL;
+  PyObject *__pyx_t_2 = NULL;
+  PyObject *__pyx_t_3 = NULL;
+  size_t __pyx_t_4;
+  int __pyx_lineno = 0;
+  const char *__pyx_filename = NULL;
+  int __pyx_clineno = 0;
+  __Pyx_RefNannySetupContext("profile_stages", 0);
 
+  /* "cython_engine.pyx":205
+ * 
+ *     def profile_stages(self):
+ *         import time             # <<<<<<<<<<<<<<
+ * 
+ *         start = time.perf_counter_ns()
+*/
+  __pyx_t_2 = __Pyx_Import(__pyx_mstate_global->__pyx_n_u_time, 0, 0, NULL, 0); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 205, __pyx_L1_error)
+  __pyx_t_1 = __pyx_t_2;
+  __Pyx_GOTREF(__pyx_t_1);
+  __pyx_v_time = __pyx_t_1;
+  __pyx_t_1 = 0;
 
+  /* "cython_engine.pyx":207
+ *         import time
+ * 
+ *         start = time.perf_counter_ns()             # <<<<<<<<<<<<<<
+ *         self._sort_buy_orders()
+ *         buy_sort_ns = time.perf_counter_ns() - start
+*/
+  __pyx_t_3 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 207, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_v_start = __pyx_t_1;
+  __pyx_t_1 = 0;
 
+  /* "cython_engine.pyx":208
+ * 
+ *         start = time.perf_counter_ns()
+ *         self._sort_buy_orders()             # <<<<<<<<<<<<<<
+ *         buy_sort_ns = time.perf_counter_ns() - start
+ * 
+*/
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_sort_buy_orders(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 208, __pyx_L1_error)
 
+  /* "cython_engine.pyx":209
+ *         start = time.perf_counter_ns()
+ *         self._sort_buy_orders()
+ *         buy_sort_ns = time.perf_counter_ns() - start             # <<<<<<<<<<<<<<
+ * 
+ *         start = time.perf_counter_ns()
+*/
+  __pyx_t_3 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 209, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_t_3 = __Pyx_PyNumber_Subtract_object_object(__pyx_t_1, __pyx_v_start); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 209, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_v_buy_sort_ns = __pyx_t_3;
+  __pyx_t_3 = 0;
+
+  /* "cython_engine.pyx":211
+ *         buy_sort_ns = time.perf_counter_ns() - start
+ * 
+ *         start = time.perf_counter_ns()             # <<<<<<<<<<<<<<
+ *         self._sort_sell_orders()
+ *         sell_sort_ns = time.perf_counter_ns() - start
+*/
+  __pyx_t_1 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_1);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, NULL};
+    __pyx_t_3 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 211, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+  }
+  __Pyx_DECREF_SET(__pyx_v_start, __pyx_t_3);
+  __pyx_t_3 = 0;
+
+  /* "cython_engine.pyx":212
+ * 
+ *         start = time.perf_counter_ns()
+ *         self._sort_sell_orders()             # <<<<<<<<<<<<<<
+ *         sell_sort_ns = time.perf_counter_ns() - start
+ * 
+*/
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_sort_sell_orders(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 212, __pyx_L1_error)
+
+  /* "cython_engine.pyx":213
+ *         start = time.perf_counter_ns()
+ *         self._sort_sell_orders()
+ *         sell_sort_ns = time.perf_counter_ns() - start             # <<<<<<<<<<<<<<
+ * 
+ *         start = time.perf_counter_ns()
+*/
+  __pyx_t_1 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_1);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_1, NULL};
+    __pyx_t_3 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_1); __pyx_t_1 = 0;
+    if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 213, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_3);
+  }
+  __pyx_t_1 = __Pyx_PyNumber_Subtract_object_object(__pyx_t_3, __pyx_v_start); if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 213, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_1);
+  __Pyx_DECREF(__pyx_t_3); __pyx_t_3 = 0;
+  __pyx_v_sell_sort_ns = __pyx_t_1;
+  __pyx_t_1 = 0;
+
+  /* "cython_engine.pyx":215
+ *         sell_sort_ns = time.perf_counter_ns() - start
+ * 
+ *         start = time.perf_counter_ns()             # <<<<<<<<<<<<<<
+ *         self._execute_matching()
+ *         matching_ns = time.perf_counter_ns() - start
+*/
+  __pyx_t_3 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 215, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __Pyx_DECREF_SET(__pyx_v_start, __pyx_t_1);
+  __pyx_t_1 = 0;
+
+  /* "cython_engine.pyx":216
+ * 
+ *         start = time.perf_counter_ns()
+ *         self._execute_matching()             # <<<<<<<<<<<<<<
+ *         matching_ns = time.perf_counter_ns() - start
+ * 
+*/
+  ((struct __pyx_vtabstruct_13cython_engine_CythonMatchingEngine *)__pyx_v_self->__pyx_vtab)->_execute_matching(__pyx_v_self); if (unlikely(PyErr_Occurred())) __PYX_ERR(0, 216, __pyx_L1_error)
+
+  /* "cython_engine.pyx":217
+ *         start = time.perf_counter_ns()
+ *         self._execute_matching()
+ *         matching_ns = time.perf_counter_ns() - start             # <<<<<<<<<<<<<<
+ * 
+ *         return buy_sort_ns, sell_sort_ns, matching_ns
+*/
+  __pyx_t_3 = __pyx_v_time;
+  __Pyx_INCREF(__pyx_t_3);
+  __pyx_t_4 = 0;
+  {
+    PyObject *__pyx_callargs[2] = {__pyx_t_3, NULL};
+    __pyx_t_1 = __Pyx_PyObject_FastCallMethod((PyObject*)__pyx_mstate_global->__pyx_n_u_perf_counter_ns, __pyx_callargs+__pyx_t_4, (1-__pyx_t_4) | (1*__Pyx_PY_VECTORCALL_ARGUMENTS_OFFSET));
+    __Pyx_XDECREF(__pyx_t_3); __pyx_t_3 = 0;
+    if (unlikely(!__pyx_t_1)) __PYX_ERR(0, 217, __pyx_L1_error)
+    __Pyx_GOTREF(__pyx_t_1);
+  }
+  __pyx_t_3 = __Pyx_PyNumber_Subtract_object_object(__pyx_t_1, __pyx_v_start); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 217, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_DECREF(__pyx_t_1); __pyx_t_1 = 0;
+  __pyx_v_matching_ns = __pyx_t_3;
+  __pyx_t_3 = 0;
+
+  /* "cython_engine.pyx":219
+ *         matching_ns = time.perf_counter_ns() - start
+ * 
+ *         return buy_sort_ns, sell_sort_ns, matching_ns             # <<<<<<<<<<<<<<
+*/
+  __pyx_t_3 = PyTuple_New(3); if (unlikely(!__pyx_t_3)) __PYX_ERR(0, 219, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_3);
+  __Pyx_INCREF(__pyx_v_buy_sort_ns);
+  __Pyx_GIVEREF(__pyx_v_buy_sort_ns);
+  if (__Pyx_PyTuple_SET_ITEM(__pyx_t_3, 0, __pyx_v_buy_sort_ns) != (0)) __PYX_ERR(0, 219, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_v_sell_sort_ns);
+  __Pyx_GIVEREF(__pyx_v_sell_sort_ns);
+  if (__Pyx_PyTuple_SET_ITEM(__pyx_t_3, 1, __pyx_v_sell_sort_ns) != (0)) __PYX_ERR(0, 219, __pyx_L1_error);
+  __Pyx_INCREF(__pyx_v_matching_ns);
+  __Pyx_GIVEREF(__pyx_v_matching_ns);
+  if (__Pyx_PyTuple_SET_ITEM(__pyx_t_3, 2, __pyx_v_matching_ns) != (0)) __PYX_ERR(0, 219, __pyx_L1_error);
+  {
+    PyObject *__pyx_temp;
+    {
+      __pyx_temp = __pyx_r;
+      __pyx_r = __pyx_t_3;
+    }
+    __Pyx_XDECREF(__pyx_temp);
+  }
+  __pyx_t_3 = 0;
+  goto __pyx_L0;
+
+  /* "cython_engine.pyx":204
+ *         self._execute_matching()
+ * 
+ *     def profile_stages(self):             # <<<<<<<<<<<<<<
+ *         import time
+ * 
+*/
+
+  /* function exit code */
+  __pyx_L1_error:;
+  __Pyx_XDECREF(__pyx_t_1);
+  __Pyx_XDECREF(__pyx_t_3);
+  __Pyx_AddTraceback("cython_engine.CythonMatchingEngine.profile_stages", __pyx_clineno, __pyx_lineno, __pyx_filename);
+  __pyx_r = NULL;
+  __pyx_L0:;
+  __Pyx_XDECREF(__pyx_v_time);
+  __Pyx_XDECREF(__pyx_v_start);
+  __Pyx_XDECREF(__pyx_v_buy_sort_ns);
+  __Pyx_XDECREF(__pyx_v_sell_sort_ns);
+  __Pyx_XDECREF(__pyx_v_matching_ns);
   __Pyx_XGIVEREF(__pyx_r);
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
@@ -5169,15 +5619,15 @@ static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_12match_orders(
 */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_15__reduce_cython__(PyObject *__pyx_v_self, 
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_17__reduce_cython__(PyObject *__pyx_v_self, 
 #if CYTHON_VECTORCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-static PyMethodDef __pyx_mdef_13cython_engine_20CythonMatchingEngine_15__reduce_cython__ = {"__reduce_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_15__reduce_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0};
-static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_15__reduce_cython__(PyObject *__pyx_v_self, 
+static PyMethodDef __pyx_mdef_13cython_engine_20CythonMatchingEngine_17__reduce_cython__ = {"__reduce_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_17__reduce_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0};
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_17__reduce_cython__(PyObject *__pyx_v_self, 
 #if CYTHON_VECTORCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -5203,14 +5653,14 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   const Py_ssize_t __pyx_kwds_len = unlikely(__pyx_kwds) ? __Pyx_NumKwargs_FASTCALL(__pyx_kwds) : 0;
   if (unlikely(__pyx_kwds_len < 0)) return NULL;
   if (unlikely(__pyx_kwds_len > 0)) {__Pyx_RejectKeywords("__reduce_cython__", __pyx_kwds); return NULL;}
-  __pyx_r = __pyx_pf_13cython_engine_20CythonMatchingEngine_14__reduce_cython__(((struct __pyx_obj_13cython_engine_CythonMatchingEngine *)__pyx_v_self));
+  __pyx_r = __pyx_pf_13cython_engine_20CythonMatchingEngine_16__reduce_cython__(((struct __pyx_obj_13cython_engine_CythonMatchingEngine *)__pyx_v_self));
 
   /* function exit code */
   __Pyx_RefNannyFinishContext();
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_14__reduce_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_16__reduce_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   int __pyx_lineno = 0;
@@ -5250,15 +5700,15 @@ static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_14__reduce_cyth
 */
 
 /* Python wrapper */
-static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_17__setstate_cython__(PyObject *__pyx_v_self, 
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_19__setstate_cython__(PyObject *__pyx_v_self, 
 #if CYTHON_VECTORCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
 PyObject *__pyx_args, PyObject *__pyx_kwds
 #endif
 ); /*proto*/
-static PyMethodDef __pyx_mdef_13cython_engine_20CythonMatchingEngine_17__setstate_cython__ = {"__setstate_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_17__setstate_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0};
-static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_17__setstate_cython__(PyObject *__pyx_v_self, 
+static PyMethodDef __pyx_mdef_13cython_engine_20CythonMatchingEngine_19__setstate_cython__ = {"__setstate_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_19__setstate_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0};
+static PyObject *__pyx_pw_13cython_engine_20CythonMatchingEngine_19__setstate_cython__(PyObject *__pyx_v_self, 
 #if CYTHON_VECTORCALL
 PyObject *const *__pyx_args, Py_ssize_t __pyx_nargs, PyObject *__pyx_kwds
 #else
@@ -5324,7 +5774,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   __Pyx_RefNannyFinishContext();
   return NULL;
   __pyx_L4_argument_unpacking_done:;
-  __pyx_r = __pyx_pf_13cython_engine_20CythonMatchingEngine_16__setstate_cython__(((struct __pyx_obj_13cython_engine_CythonMatchingEngine *)__pyx_v_self), __pyx_v___pyx_state);
+  __pyx_r = __pyx_pf_13cython_engine_20CythonMatchingEngine_18__setstate_cython__(((struct __pyx_obj_13cython_engine_CythonMatchingEngine *)__pyx_v_self), __pyx_v___pyx_state);
 
   /* function exit code */
   for (Py_ssize_t __pyx_temp=0; __pyx_temp < (Py_ssize_t)(sizeof(values)/sizeof(values[0])); ++__pyx_temp) {
@@ -5334,7 +5784,7 @@ PyObject *__pyx_args, PyObject *__pyx_kwds
   return __pyx_r;
 }
 
-static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_16__setstate_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self, CYTHON_UNUSED PyObject *__pyx_v___pyx_state) {
+static PyObject *__pyx_pf_13cython_engine_20CythonMatchingEngine_18__setstate_cython__(CYTHON_UNUSED struct __pyx_obj_13cython_engine_CythonMatchingEngine *__pyx_v_self, CYTHON_UNUSED PyObject *__pyx_v___pyx_state) {
   PyObject *__pyx_r = NULL;
   __Pyx_RefNannyDeclarations
   int __pyx_lineno = 0;
@@ -5499,8 +5949,9 @@ static PyMethodDef __pyx_methods_13cython_engine_CythonMatchingEngine[] = {
   {"get_order_books", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_9get_order_books, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
   {"get_trades", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_11get_trades, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
   {"match_orders", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_13match_orders, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
-  {"__reduce_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_15__reduce_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
-  {"__setstate_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_17__setstate_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
+  {"profile_stages", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_15profile_stages, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
+  {"__reduce_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_17__reduce_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
+  {"__setstate_cython__", (PyCFunction)(void(*)(void))(__Pyx_PyCFunction_FastCallWithKeywords)__pyx_pw_13cython_engine_20CythonMatchingEngine_19__setstate_cython__, __Pyx_METH_FASTCALL|METH_KEYWORDS, 0},
   {0, 0, 0, 0}
 };
 #if CYTHON_USE_TYPE_SPECS
@@ -5659,6 +6110,9 @@ static int __Pyx_modinit_Exttype___pyx_obj_13cython_engine_CythonMatchingEngine(
   /*--- Exttype __pyx_obj_13cython_engine_CythonMatchingEngine ---*/
   __pyx_vtabptr_13cython_engine_CythonMatchingEngine = &__pyx_vtable_13cython_engine_CythonMatchingEngine;
   __pyx_vtable_13cython_engine_CythonMatchingEngine._valid_order = (int (*)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *, int, int, int))__pyx_f_13cython_engine_20CythonMatchingEngine__valid_order;
+  __pyx_vtable_13cython_engine_CythonMatchingEngine._sort_buy_orders = (void (*)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *))__pyx_f_13cython_engine_20CythonMatchingEngine__sort_buy_orders;
+  __pyx_vtable_13cython_engine_CythonMatchingEngine._sort_sell_orders = (void (*)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *))__pyx_f_13cython_engine_20CythonMatchingEngine__sort_sell_orders;
+  __pyx_vtable_13cython_engine_CythonMatchingEngine._execute_matching = (void (*)(struct __pyx_obj_13cython_engine_CythonMatchingEngine *))__pyx_f_13cython_engine_20CythonMatchingEngine__execute_matching;
   #if CYTHON_USE_TYPE_SPECS
   __pyx_mstate->__pyx_ptype_13cython_engine_CythonMatchingEngine = (PyTypeObject *) __Pyx_PyType_FromModuleAndSpec(__pyx_m, &__pyx_type_13cython_engine_CythonMatchingEngine_spec, NULL); if (unlikely(!__pyx_mstate->__pyx_ptype_13cython_engine_CythonMatchingEngine)) __PYX_ERR(0, 15, __pyx_L1_error)
   #else
@@ -6047,19 +6501,34 @@ __Pyx_RefNannySetupContext("PyInit_cython_engine", 0);
   if (__Pyx_SetItemOnTypeDict(__pyx_mstate_global->__pyx_ptype_13cython_engine_CythonMatchingEngine, __pyx_mstate_global->__pyx_n_u_get_trades, __pyx_t_2) < (0)) __PYX_ERR(0, 120, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
-  /* "cython_engine.pyx":123
- *         return self.trades.copy()
+  /* "cython_engine.pyx":199
+ * 
  * 
  *     def match_orders(self):             # <<<<<<<<<<<<<<
- *         cdef int i, j
- *         cdef Order temp
+ *         self._sort_buy_orders()
+ *         self._sort_sell_orders()
 */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_13match_orders, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine_match_order, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[4])); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 123, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_13match_orders, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine_match_order, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[4])); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 199, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030E0000
   PyUnstable_Object_EnableDeferredRefcount(__pyx_t_2);
   #endif
-  if (__Pyx_SetItemOnTypeDict(__pyx_mstate_global->__pyx_ptype_13cython_engine_CythonMatchingEngine, __pyx_mstate_global->__pyx_n_u_match_orders, __pyx_t_2) < (0)) __PYX_ERR(0, 123, __pyx_L1_error)
+  if (__Pyx_SetItemOnTypeDict(__pyx_mstate_global->__pyx_ptype_13cython_engine_CythonMatchingEngine, __pyx_mstate_global->__pyx_n_u_match_orders, __pyx_t_2) < (0)) __PYX_ERR(0, 199, __pyx_L1_error)
+  __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
+
+  /* "cython_engine.pyx":204
+ *         self._execute_matching()
+ * 
+ *     def profile_stages(self):             # <<<<<<<<<<<<<<
+ *         import time
+ * 
+*/
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_15profile_stages, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine_profile_sta, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[5])); if (unlikely(!__pyx_t_2)) __PYX_ERR(0, 204, __pyx_L1_error)
+  __Pyx_GOTREF(__pyx_t_2);
+  #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030E0000
+  PyUnstable_Object_EnableDeferredRefcount(__pyx_t_2);
+  #endif
+  if (__Pyx_SetItemOnTypeDict(__pyx_mstate_global->__pyx_ptype_13cython_engine_CythonMatchingEngine, __pyx_mstate_global->__pyx_n_u_profile_stages, __pyx_t_2) < (0)) __PYX_ERR(0, 204, __pyx_L1_error)
   __Pyx_DECREF(__pyx_t_2); __pyx_t_2 = 0;
 
   /* "(tree fragment)":1
@@ -6067,7 +6536,7 @@ __Pyx_RefNannySetupContext("PyInit_cython_engine", 0);
  *     raise TypeError, "no default __reduce__ due to non-trivial __cinit__"
  * def __setstate_cython__(self, __pyx_state):
 */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_15__reduce_cython__, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine___reduce_cy, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[5])); if (unlikely(!__pyx_t_2)) __PYX_ERR(1, 1, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_17__reduce_cython__, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine___reduce_cy, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[6])); if (unlikely(!__pyx_t_2)) __PYX_ERR(1, 1, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030E0000
   PyUnstable_Object_EnableDeferredRefcount(__pyx_t_2);
@@ -6081,7 +6550,7 @@ __Pyx_RefNannySetupContext("PyInit_cython_engine", 0);
  * def __setstate_cython__(self, __pyx_state):             # <<<<<<<<<<<<<<
  *     raise TypeError, "no default __reduce__ due to non-trivial __cinit__"
 */
-  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_17__setstate_cython__, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine___setstate, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[6])); if (unlikely(!__pyx_t_2)) __PYX_ERR(1, 3, __pyx_L1_error)
+  __pyx_t_2 = __Pyx_CyFunction_New(&__pyx_mdef_13cython_engine_20CythonMatchingEngine_19__setstate_cython__, __Pyx_CYFUNCTION_CCLASS, __pyx_mstate_global->__pyx_n_u_CythonMatchingEngine___setstate, NULL, __pyx_mstate_global->__pyx_n_u_cython_engine, __pyx_mstate_global->__pyx_d, ((PyObject *)__pyx_mstate_global->__pyx_codeobj_tab[7])); if (unlikely(!__pyx_t_2)) __PYX_ERR(1, 3, __pyx_L1_error)
   __Pyx_GOTREF(__pyx_t_2);
   #if CYTHON_COMPILING_IN_CPYTHON && PY_VERSION_HEX >= 0x030E0000
   PyUnstable_Object_EnableDeferredRefcount(__pyx_t_2);
@@ -6163,38 +6632,38 @@ static int __Pyx_InitConstants(__pyx_mstatetype *__pyx_mstate) {
   int __pyx_clineno = 0;
   CYTHON_UNUSED_VAR(__pyx_mstate);
   {
-    const struct { const unsigned int length: 6; } str_length_index[] = {{15},{1},{25},{17},{7},{6},{2},{9},{50},{20},{38},{40},{34},{35},{36},{31},{33},{20},{12},{8},{12},{8},{10},{8},{11},{14},{12},{10},{17},{13},{12},{12},{19},{8},{13},{13},{14},{18},{3},{13},{10},{8},{18},{4},{13},{15},{10},{1},{5},{1},{12},{5},{8},{3},{5},{8},{4},{4},{14},{11},{10},{4},{14},{6}};
-    const struct { const unsigned int length: 10; } bytes_length_index[] = {{9},{13},{119},{118},{118},{540}};
+    const struct { const unsigned int length: 6; } str_length_index[] = {{15},{1},{25},{17},{7},{6},{2},{9},{50},{20},{38},{40},{34},{35},{36},{31},{33},{35},{20},{12},{8},{12},{8},{10},{8},{11},{14},{12},{10},{17},{13},{12},{12},{19},{8},{13},{13},{14},{18},{10},{11},{8},{18},{4},{13},{15},{10},{1},{5},{12},{11},{5},{8},{15},{3},{5},{14},{8},{4},{11},{12},{10},{5},{4},{6}};
+    const struct { const unsigned int length: 7; } bytes_length_index[] = {{9},{26},{13},{110},{119},{118},{118}};
     #ifndef CYTHON_COMPRESS_STRINGS
       #define CYTHON_COMPRESS_STRINGS 90
     #endif
-    #if (CYTHON_COMPRESS_STRINGS) == 1 /* compression: zlib (939 bytes) */
-static const char cstring[] = "x\332\215SAo\3336\024\236\213t\365\026e\215S;\035\272u\220\323\024\351\320.\200\332\000\001\326\r\203\233\004\003\226.\235\275\354P4\000AK\264\303E\226l\221J\3435\330r\364\221G\036y\344QG\035\367\023v\324\321?a?a\217\262c\047\255\323N\200E=\362\343\373\276\367\275\347\007<\"\304nE\270\335!\001\377\372\207-\334\305.\345}\273\0233n7\211\335\r\031\345\364\230\270}~\030\006\210\004m\032\220\365n\377\304\243\0147}B\002\363n\273\224\215\276\274 \264=\322\302\261\317m\204\"\342\305.A\310\366bb\363\320\016\302\340\033\036\321c\212}8ui@9B[y\352\2371w\017i\320\336\311\031f\355\255O\362\215\305\240+P\214p\3061\377\000\016{\036j\306}\024F\036\211\256D0\342\373\357\201\264\t\037\235\242f\030\036\261+1<\302\036\231}\3341\341(\tC\350\227\376\t\374\266\251\313\321\0369\341\r\322B\010\007A\230\327\003O+\016\\\263\266\317k\204\247\203i\220\257\241\027\373\371N\200;\371\n}Bc\230\371<\346\246E\346\240\027c\377\034t\336\244w\354\235l\220\023\023\200\255\223\304\354\002\375;v#\304\t\203\306\"\312\220\033Fa\314\241\316Kv_v\026\263~\340\322p}\202e\0004\330\210\230\322\300\252Q\300`\250\334\361\200\272>\340\020\324\r\316\272\244\211\335#7\354\366/M\351[\275\231\266\201RN:\354\367\213\306\347\357\021\230z\335\260\333\215\250K\300\244\200\003\027(m\031\265\271\342\211\246qdD\201\003\343\231\207\304\335\234\004\235_>\306~L\330Y!\233\373t\360P\324\317jY\361\346\200\213My_\366\316j\303bE\324\263\342\262\300\303\2425\330\021\025\201\005\227Nf\225\305\266\234W\216\252e\326\262h\313zVZ\026G\252\242\0165I\236\246\344o\347\337\217?\372d\341\355\033\226\252\251zf\335\026\257%\236ycqp*\235\263\232\371\264\006\033\240\343{UPw\364fR\315\254[\302\311\212\363\260\373F\336\223\373\252\224\357\014\213\013\203\003Y\312`y)p6\215\016dY\326\215\350]\321\223srOW3\010\366\244Y\376\261\276\002~\010_\310\r\331S\005Sr\357C\254\247\362\211\364T\365\177\262>\227\005\370D\2726\242q\336\303Z\236\032\305\344*@\200aC\274QU\005\256-\212kbE\200\313K\260l\211\010h\026\313b\027\356_SkzIo\350\327\tXY\021\257@\362\222\332\324""\367\364~r;-L\267\276\325\r\315\023g8\271\266\242vtY\277J\013)\3442\355\005\222y\351\310g\262\251\256\253\372\305\306]\320s:j\366l=\317\307\344+z;\271\221\364\014\371\201*\001\323\217\372\211\366\2225`\232l\375\244\233\311\\R\033N\256=V\277\351U\355\247\325\324\231\350\261dM6d\004\343\001\203\367\331\300\023\017\363\260\254\366\365\227I\003\030\200\177\025\306\2474j\310X\336\320\2729`bM.\031\203\263\305\322\320\262\201\341\226\3325\006\230\2647F\203g\234\340\352)({\220V\241\336\205\273rK\376\001n\002\350.\214\326\035\375X\327M\262?\345\257\320\047P\272#+\022K\246V\025\316\312\237\347\223\377L5\365u0\373\213\264\226\326\rfOU\247&?\322\330$\370K\272\2524#\201\371#4T\244+\240\341Q\212\323\236\301\274P\316\324\225\357t\357?3\245\305\211";
-    PyObject *data = __Pyx_DecompressString(cstring, 939, 1);
+    #if (CYTHON_COMPRESS_STRINGS) == 1 /* compression: zlib (700 bytes) */
+static const char cstring[] = "x\332\215SKk\333@\020\256!\024\267QHB\363\200\224\026\231\264\320\007\r\230\004r(\245\230$\247\266i\035z)\004\226\365j\254,\221ve\355\312\265i\n>\352\270\307=\352\250c\216=\366\047\370\250\243\177B\177BW\362#v\3424\025H3;\363\315\363[\275\220!\200\335\014\261\353\003\223/\337\037\340\000\023*\273\266\037\ti7\300\016\270\240\222\266\201t\345\031g\010\230K\031\354\004\335\216C\005nx\000,\377\272\204\212\241\3460n;\320\304\221\047m\204Bp\"\002\010\331N\004\266\3446\343\354\215\014i\233b\317x\teT\"tP\244\376\204%9\243\314=**\314\263\355L\362\215\232A\267\240\004H!\261\274\003\207\035\0075\242.\342\241\003\341\255\010\001\236\367\017\210\013r\350E\r\316\317\305\255\030\031b\007\346\273\375\3748L2\037\020\204\274I=@f&\027\004B_\272\035\363\036R\"\3211t\344\t4\021\302\214\361bd\3634#Fr\351\216\327`\036\037SVH\356D^aa\330/\244\241\022\215`\271\332\2269\213\271\243\025ao\014\032\363x\203\201\211\001:\371\301l~\222XL\225\277\301\010B\022\204\341\036Q\201\010\017y$\315\2443\214\314.\037\213.#\224\357L\260\"\007\206 \314=\3135\301CSY\220\321\365%\236\201 3\262\331;\201\006&\347\204\007\335\231;|\215\271+\222(\225\340\213iV\374\021\037\246@a\030\206Q\047\200\260i\272\217\2304G&\002\036\004!%0\313\227Y#\223\246%3K\263\230g\330t\241\216\2726\333\031\3752&$\224\222\372\320\306^\004\242W\312\026\036\306\257U\275W\313\312V\337z\242\353\205|\252\361X\346\236\345X\252}\375\\\267\314ayeP^Q\013\375\265g\311T\314\206r\372[\257\322\355\364$m]\363\027\2716\225\354?~\235\356\246\215\313\322<\377l\374r\374S\037\247\225^mP^WEv<([\361\221ZWXI]\315\2545u\250\027\223\252Iam(\327t\260\272\241\316\223\365\344,\205\313\267\277\340w\365\317\375{\017\226\256GXI-\251g\326\246\372nj\316\213X\211/t\265W\313U+\3363S\277KJ\311V\272\177Y\311\254G\252\232\225\027\215\365\207\336\326_\223\325\3022(/\305\247z53\342\233\302\331\325\351T\257\351z\336\364\007\325\322\013\3714f\330\370XW\246\366\033\177\326{\272\225\224\362\005\267\356\252z\241w\265\223T\376\263\352G]2*Jk\3032\325\333\252\376\005\273\3736\312";
+    PyObject *data = __Pyx_DecompressString(cstring, 700, 1);
     #define __Pyx_DecompressString_LZSS_UNUSED
     if (unlikely(!data)) __PYX_ERR(0, 2, __pyx_L1_error)
     const char* const bytes = __Pyx_PyBytes_AsString(data);
     #if !CYTHON_ASSUME_SAFE_MACROS
     if (likely(bytes)); else { Py_DECREF(data); __PYX_ERR(0, 2, __pyx_L1_error) }
     #endif
-    #elif (CYTHON_COMPRESS_STRINGS) > 0 && (CYTHON_COMPRESS_STRINGS) <= 90 /* compression: lzss (1160 bytes) */
-static const char cstring[] = "\377(tree fr\377agment)?\377Capacity\377 must be\377 positiv\377ecython_\377engine.p\377yxdisabl\367een\002\001gcis\376\004\003dno def\377ault __r\377educe__ \377due to n\377on-trivi\373al\033\000cinit\367__CV\002Matc\237hingE]\002\000\021.\364G\006\206\004_\017\024sets\337tate_\013\032ad\377d_buy_or\347der[\022\036\001sel\335l\010\030get;\003_b\317ooks\242\022 \001tr\227ade\t\023m\365\001\200\003s\337__Pyx\001\000Di\377ct_NextR\377ef__anno\376\313\002___func\346\004\000_g\334\005\021\000mai}n\020\001modul\353 \237__nam\003\002\245@_\232\205#_\007\001vt\257A;\001q\207ual\035\005\235E\316.\267Fe\221xo\001\324 P\006st\010\336._\357_tes\326@_is\177_corout\261`\374\342*\314+asynci\313o.#\006s\225@\227Are\250\327\001\222`\007\003s\322`c\232\204\004c\237line_\365\000\327 c\377ebackcop\361y\231\204\n\215L\375\047iite\307msj\355)\200b\205b_i\377dpoppric}e\242 ntity\201`\001f\204a\207b\213\006\007\004\221\001\356`\355\204\004\352V\000p\347B_5\005val\377ues\200\001\330\004\n\377\210+\220Q\200A\330\010\377\017\210t\2207\230%\230\377q\200A\340\010\025\220Q\377\330\010\026\220a\340\010\014\377\210E\220\025\220a\220t\377\2301\330\014\024\220D\230\377\013\2401\240A\330\014\026\377\220g\230Q\330\021\026\220\377k\240\025\240h\250e\260\377;\270e\3001\360\006\000\373\t\r\"\r\014\240A\240Q\177\330\014\027\220w\230a\035\022\177\020\210|\2301\200A9\001\367\014\2104\205\000=\240\001\240\377\032\2507\260!\330\014\023\337\2201\330\010\013\023\000{\230\337#\230T\240\021\r\002\340\010\277\r\210\\\230\021\330\004\000Y\367\220a\330\004\007\\\230\024\230\375Q\261\001K\220q\230\004\230oN\250!\330\277\000N\230\003\001\347\320\014\036}\000\316\000O\2304\257\230q\240\001\357\001qV\035|\277\2303\230d\240!O$L\333\230\001~\000_\250\314 \014\210\255O\257 \010\014^\025\024\237\047s\363\230$\226 \347\0004\220{\240\373!\240\345 \020\220\002\220\"u\220\343 \022\004\000C\220r\350\000\357\020\024\220K\263\000\002\240\047\177\250\022\2504\250w\260\310 \367\025\220[\246 \022\2407\250\377#\250T\260\027\270\001""\330\375\021\013\005:\250R\250t\260\3731\340.\006\"\240E\250\024\377\250[\270\001\270\021\330\020\376\333A\014\020\220\013\2301\230\177B\230b\240\005\240Q\255I\322\205\010|\347Cz\023Lv\004\"\250\337D\260\007\260qy\001\\\240\377\021\240\"\240G\2503\250\307d\260\047g\000\215\000\r\003J\250\237b\260\004\260A\214\0011\0032\377\240U\250$\250l\270!\373\2701\207\006\014\230A\230R\363\230r\316`\366`\016\210d\220\375+\n\002\024\240T\250\034\260\275R_\000\014\022\220$\356`\021\366\213C4\220\232\002\340\014\017\210\337s\220\047\230\022\323A\330\020\357\021\340\014 \274`\023\240K\312\375\001\330\344\000\007\363c\275!t\240\375;\227\000(\270!\360\006\000\277\r\035\230C\230z\313 1\367\330\014\035\330`\032\2502\250\235QI\001~\230S\233`\356 E\377\230\025\230a\230s\240$\337\240a\330\024\030\365\204\002B\240\367b\250\005\352 \033\270A\270\273Q\330\222@N\240!\333\047,{\250a\212\001\177\230c\240\343 \363\024\2202\014\205\205\001R\240r\250}\025\233 ,\270a\270q=\001wO\2401\214\047<\250q";
-    PyObject *data = __Pyx_DecompressString_LZSS(cstring, 1160, 1789);
+    #elif (CYTHON_COMPRESS_STRINGS) > 0 && (CYTHON_COMPRESS_STRINGS) <= 90 /* compression: lzss (862 bytes) */
+static const char cstring[] = "\377(tree fr\377agment)?\377Capacity\377 must be\377 positiv\377ecython_\377engine.p\377yxdisabl\367een\002\001gcis\376\004\003dno def\377ault __r\377educe__ \377due to n\377on-trivi\373al\033\000cinit\367__CV\002Matc\237hingE]\002\000\021.\364G\006\206\004_\017\024sets\337tate_\013\032ad\377d_buy_or\347der[\022\036\001sel\335l\010\030get;\003_b\317ooks\242\022 \001tr\027ade\t\023m\365\001\200\003*\023\377profile_\376\321\000ges__Py\375x\001\000Dict_N\377extRef__\357anno\356\002___ofunc\004\000_g\377\005\336\021\000main\020\001mosduH\000#\000nam\226@\313__\310@_\250#\006\002vt<\322A;\001qual\035\005\300EL\361.\332Fexo\001\367 _Q\005\371st\010\201N__tes\376\371@_is_cor\307out\324`\205J\357+as\277yncio.#\006s\316\267Ares\345`\301Aso\277rt_nsc\270\204\004c\237line_\360\000\365 c\377ebackcop\361y\267\204\n\253L\233Giite\013ms\212Im\224\204\004^\000\250b\255b\177_idperf\273\000\337unterz\000po?pprice\242K\304 _ntity\306`f\310b\270\257\003\323b\257\004set\254\205\004s\377tarttime\377values\200\001\377\330\004\n\210+\220Q\200\377A\330\010\014\320\014\035\230\235Q\003\002\036\230a\000\005\026\001\017\377\210t\2207\230%\230q\376$\000\017\020\340\010\020\220\004\357\320\024$\240)\010\026\220d\377\320\032*\250#\250R\250\371q\021\014G\002\027\220t\320\033\177+\2503\250b\260\001\014\021\3762\013\017\210}\230N\250!\277\200A\340\010\025\220\217\000\026\377\220a\340\010\014\210E\220\377\025\220a\220t\2301\330\377\014\024\220D\230\013\2401\336\200\000\014\026\220g\263\000\021\026\377\220k\240\025\240h\250e\377\260;\270e\3001\360\006\367\000\t\r\"\r\014\240A\240?Q\330\014\027\220w\335\000\036\021\177\020\210|\2301\200A9\001\367\014\2104\363\000=\240\001\240\377\032\2507\260!\330\014\023\337\2201\330\010\013\023\000{\230\337#\230T\240\021\r\002\340\010\277\r\210\\\230\021\330\004\000Y\371\220\261 \005\006\\\230\024\230Q>\261\001K\220q\230\004\312\001\336 \357\210N\230!\325(\210O\230\3774\230q\240\001\330\010\017\373\210qV\035|\2303\230d\273\240!O$L\230\001~\000_\t\250\323Ad\0001^\025";
+    PyObject *data = __Pyx_DecompressString_LZSS(cstring, 862, 1439);
     #define __Pyx_DecompressString_UNUSED
     if (unlikely(!data)) __PYX_ERR(0, 2, __pyx_L1_error)
     const char* const bytes = __Pyx_PyBytes_AsString(data);
     #if !CYTHON_ASSUME_SAFE_MACROS
     if (likely(bytes)); else { Py_DECREF(data); __PYX_ERR(0, 2, __pyx_L1_error) }
     #endif
-    #else /* compression: none (1789 bytes) */
-static const char bytes[] = "(tree fragment)?Capacity must be positivecython_engine.pyxdisableenablegcisenabledno default __reduce__ due to non-trivial __cinit__CythonMatchingEngineCythonMatchingEngine.__reduce_cython__CythonMatchingEngine.__setstate_cython__CythonMatchingEngine.add_buy_orderCythonMatchingEngine.add_sell_orderCythonMatchingEngine.get_order_booksCythonMatchingEngine.get_tradesCythonMatchingEngine.match_orders__Pyx_PyDict_NextRef__annotate____func____getstate____main____module____name____pyx_state__pyx_vtable____qualname____reduce____reduce_cython____reduce_ex____set_name____setstate____setstate_cython____test___is_coroutineadd_buy_orderadd_sell_orderasyncio.coroutinesbuybuy_remainingbuy_resultcapacitycline_in_tracebackcopycython_engineget_order_booksget_tradesiitemsjmatch_ordersorderorder_idpoppricequantityselfsellsell_remainingsell_resultsetdefaulttemptrade_quantityvalues\200\001\330\004\n\210+\220Q\200A\330\010\017\210t\2207\230%\230q\200A\340\010\025\220Q\330\010\026\220a\340\010\014\210E\220\025\220a\220t\2301\330\014\024\220D\230\013\2401\240A\330\014\026\220g\230Q\330\021\026\220k\240\025\240h\250e\260;\270e\3001\360\006\000\t\r\210E\220\025\220a\220t\2301\330\014\024\220D\230\014\240A\240Q\330\014\027\220w\230a\330\021\026\220k\240\025\240h\250e\260;\270e\3001\360\006\000\t\020\210|\2301\200A\360\006\000\t\014\2104\210t\220=\240\001\240\032\2507\260!\330\014\023\2201\330\010\013\2104\210{\230#\230T\240\021\330\014\023\2201\340\010\r\210\\\230\021\330\010\r\210Y\220a\330\010\r\210\\\230\021\330\010\r\210\\\230\024\230Q\340\010\014\210K\220q\230\004\230N\250!\330\010\014\210N\230!\330\010\014\320\014\036\230a\330\010\014\210O\2304\230q\240\001\330\010\017\210q\200A\360\006\000\t\014\2104\210t\220=\240\001\240\032\2507\260!\330\014\023\2201\330\010\013\2104\210|\2303\230d\240!\330\014\023\2201\340\010\r\210\\\230\021\330\010\r\210Y\220a\330\010\r\210\\\230\021\330\010\r\210\\\230\024\230Q\340\010\014\210L\230\001\230\024\230_\250A\330\010\014\210O\2301\330\010\014\320\014""\036\230a\330\010\014\210O\2304\230q\240\001\330\010\017\210q\200A\360\024\000\t\r\210E\220\025\220a\220s\230$\230a\330\014\023\2204\220{\240!\2401\330\014\020\220\002\220\"\220A\330\014\022\220\"\220C\220r\230\021\330\020\024\220K\230q\240\002\240\047\250\022\2504\250w\260a\330\021\025\220[\240\001\240\022\2407\250#\250T\260\027\270\001\330\021\025\220[\240\001\240\022\240:\250R\250t\2601\340\020\024\220K\230q\240\002\240\"\240E\250\024\250[\270\001\270\021\330\020\025\220Q\330\014\020\220\013\2301\230B\230b\240\005\240Q\360\006\000\t\r\210E\220\025\220a\220s\230$\230a\330\014\023\2204\220|\2401\240A\330\014\020\220\002\220\"\220A\330\014\022\220\"\220C\220r\230\021\330\020\024\220L\240\001\240\022\2407\250\"\250D\260\007\260q\330\021\025\220\\\240\021\240\"\240G\2503\250d\260\047\270\021\330\021\025\220\\\240\021\240\"\240J\250b\260\004\260A\340\020\024\220L\240\001\240\022\2402\240U\250$\250l\270!\2701\330\020\025\220Q\330\014\020\220\014\230A\230R\230r\240\025\240a\340\010\016\210d\220+\230R\230r\240\024\240T\250\034\260R\260q\330\014\022\220$\220k\240\021\240!\330\014\023\2204\220|\2401\240A\340\014\017\210s\220\047\230\022\2304\230q\330\020\021\340\014 \240\001\240\023\240K\250t\2601\330\014\020\220\007\220w\230a\330\021\024\220K\230t\240;\250d\260(\270!\360\006\000\r\035\230C\230z\250\022\2501\330\014\035\230T\240\032\2502\250Q\340\014\017\210~\230S\240\001\330\020\024\220E\230\025\230a\230s\240$\240a\330\024\030\230\013\2401\240B\240b\250\005\250T\260\033\270A\270Q\330\020\024\220N\240!\340\020\024\220K\230q\240\002\240,\250a\340\014\017\210\177\230c\240\021\330\020\024\220E\230\025\230a\230s\240$\240a\330\024\030\230\014\240A\240R\240r\250\025\250d\260,\270a\270q\330\020\024\220O\2401\340\020\024\220L\240\001\240\022\240<\250q";
+    #else /* compression: none (1439 bytes) */
+static const char bytes[] = "(tree fragment)?Capacity must be positivecython_engine.pyxdisableenablegcisenabledno default __reduce__ due to non-trivial __cinit__CythonMatchingEngineCythonMatchingEngine.__reduce_cython__CythonMatchingEngine.__setstate_cython__CythonMatchingEngine.add_buy_orderCythonMatchingEngine.add_sell_orderCythonMatchingEngine.get_order_booksCythonMatchingEngine.get_tradesCythonMatchingEngine.match_ordersCythonMatchingEngine.profile_stages__Pyx_PyDict_NextRef__annotate____func____getstate____main____module____name____pyx_state__pyx_vtable____qualname____reduce____reduce_cython____reduce_ex____set_name____setstate____setstate_cython____test___is_coroutineadd_buy_orderadd_sell_orderasyncio.coroutinesbuy_resultbuy_sort_nscapacitycline_in_tracebackcopycython_engineget_order_booksget_tradesiitemsmatch_ordersmatching_nsorderorder_idperf_counter_nspoppriceprofile_stagesquantityselfsell_resultsell_sort_nssetdefaultstarttimevalues\200\001\330\004\n\210+\220Q\200A\330\010\014\320\014\035\230Q\330\010\014\320\014\036\230a\330\010\014\320\014\036\230a\200A\330\010\017\210t\2207\230%\230q\200A\330\017\020\340\010\020\220\004\320\024$\240A\330\010\014\320\014\035\230Q\330\010\026\220d\320\032*\250#\250R\250q\340\010\020\220\004\320\024$\240A\330\010\014\320\014\036\230a\330\010\027\220t\320\033+\2503\250b\260\001\340\010\020\220\004\320\024$\240A\330\010\014\320\014\036\230a\330\010\026\220d\320\032*\250#\250R\250q\340\010\017\210}\230N\250!\200A\340\010\025\220Q\330\010\026\220a\340\010\014\210E\220\025\220a\220t\2301\330\014\024\220D\230\013\2401\240A\330\014\026\220g\230Q\330\021\026\220k\240\025\240h\250e\260;\270e\3001\360\006\000\t\r\210E\220\025\220a\220t\2301\330\014\024\220D\230\014\240A\240Q\330\014\027\220w\230a\330\021\026\220k\240\025\240h\250e\260;\270e\3001\360\006\000\t\020\210|\2301\200A\360\006\000\t\014\2104\210t\220=\240\001\240\032\2507\260!\330\014\023\2201\330\010\013\2104\210{\230#\230T\240\021\330\014\023\2201\340\010\r\210\\\230\021\330\010\r\210Y\220a\330\010""\r\210\\\230\021\330\010\r\210\\\230\024\230Q\340\010\014\210K\220q\230\004\230N\250!\330\010\014\210N\230!\330\010\014\320\014\036\230a\330\010\014\210O\2304\230q\240\001\330\010\017\210q\200A\360\006\000\t\014\2104\210t\220=\240\001\240\032\2507\260!\330\014\023\2201\330\010\013\2104\210|\2303\230d\240!\330\014\023\2201\340\010\r\210\\\230\021\330\010\r\210Y\220a\330\010\r\210\\\230\021\330\010\r\210\\\230\024\230Q\340\010\014\210L\230\001\230\024\230_\250A\330\010\014\210O\2301\330\010\014\320\014\036\230a\330\010\014\210O\2304\230q\240\001\330\010\017\210q";
     PyObject *data = NULL;
     #define __Pyx_DecompressString_UNUSED
     #define __Pyx_DecompressString_LZSS_UNUSED
     #endif
     PyObject **stringtab = __pyx_mstate->__pyx_string_tab;
     Py_ssize_t pos = 0;
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < 65; i++) {
       Py_ssize_t bytes_length = str_length_index[i].length;
       PyObject *string = PyUnicode_DecodeUTF8(bytes + pos, bytes_length, NULL);
       if (likely(string) && i >= 9) PyUnicode_InternInPlace(&string);
@@ -6205,8 +6674,8 @@ static const char bytes[] = "(tree fragment)?Capacity must be positivecython_eng
       stringtab[i] = string;
       pos += bytes_length;
     }
-    for (int i = 64; i < 70; i++) {
-      Py_ssize_t bytes_length = bytes_length_index[i-64].length;
+    for (int i = 65; i < 72; i++) {
+      Py_ssize_t bytes_length = bytes_length_index[i-65].length;
       PyObject *string = PyBytes_FromStringAndSize(bytes + pos, bytes_length);
       stringtab[i] = string;
       pos += bytes_length;
@@ -6216,15 +6685,15 @@ static const char bytes[] = "(tree fragment)?Capacity must be positivecython_eng
       }
     }
     Py_XDECREF(data);
-    for (Py_ssize_t i = 0; i < 70; i++) {
+    for (Py_ssize_t i = 0; i < 72; i++) {
       if (unlikely(PyObject_Hash(stringtab[i]) == -1)) {
         __PYX_ERR(0, 2, __pyx_L1_error)
       }
     }
     #if CYTHON_IMMORTAL_CONSTANTS
     {
-      PyObject **table = stringtab + 64;
-      for (Py_ssize_t i=0; i<6; ++i) {
+      PyObject **table = stringtab + 65;
+      for (Py_ssize_t i=0; i<7; ++i) {
         #if PY_VERSION_HEX >= 0x030F0000
         PyUnstable_SetImmortal(table[i]);
         #elif CYTHON_COMPILING_IN_CPYTHON_FREETHREADING
@@ -6257,9 +6726,9 @@ typedef struct {
     unsigned int argcount : 3;
     unsigned int num_posonly_args : 1;
     unsigned int num_kwonly_args : 1;
-    unsigned int nlocals : 4;
+    unsigned int nlocals : 3;
     unsigned int flags : 10;
-    unsigned int first_line : 7;
+    unsigned int first_line : 8;
 } __Pyx_PyCode_New_function_description;
 #ifdef __cplusplus
 } /* anonymous namespace */
@@ -6299,19 +6768,24 @@ static int __Pyx_CreateCodeObjects(__pyx_mstatetype *__pyx_mstate) {
     __pyx_mstate_global->__pyx_codeobj_tab[3] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_cython_engine_pyx, __pyx_mstate->__pyx_n_u_get_trades, __pyx_mstate->__pyx_kp_b_iso88591_A_t7_q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[3])) goto bad;
   }
   {
-    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 9, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 123};
-    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_i, __pyx_mstate->__pyx_n_u_j, __pyx_mstate->__pyx_n_u_temp, __pyx_mstate->__pyx_n_u_buy, __pyx_mstate->__pyx_n_u_sell, __pyx_mstate->__pyx_n_u_trade_quantity, __pyx_mstate->__pyx_n_u_buy_remaining, __pyx_mstate->__pyx_n_u_sell_remaining};
-    __pyx_mstate_global->__pyx_codeobj_tab[4] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_cython_engine_pyx, __pyx_mstate->__pyx_n_u_match_orders, __pyx_mstate->__pyx_kp_b_iso88591_A_E_as_a_4_1_A_Cr_Kq_4wa_7_T_Rt1, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[4])) goto bad;
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 199};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self};
+    __pyx_mstate_global->__pyx_codeobj_tab[4] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_cython_engine_pyx, __pyx_mstate->__pyx_n_u_match_orders, __pyx_mstate->__pyx_kp_b_iso88591_A_Q_a_a, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[4])) goto bad;
+  }
+  {
+    const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 6, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 204};
+    PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_time, __pyx_mstate->__pyx_n_u_start, __pyx_mstate->__pyx_n_u_buy_sort_ns, __pyx_mstate->__pyx_n_u_sell_sort_ns, __pyx_mstate->__pyx_n_u_matching_ns};
+    __pyx_mstate_global->__pyx_codeobj_tab[5] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_cython_engine_pyx, __pyx_mstate->__pyx_n_u_profile_stages, __pyx_mstate->__pyx_kp_b_iso88591_A_A_Q_d_Rq_A_a_t_3b_A_a_d_Rq_N, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[5])) goto bad;
   }
   {
     const __Pyx_PyCode_New_function_description descr = {1, 0, 0, 1, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 1};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self};
-    __pyx_mstate_global->__pyx_codeobj_tab[5] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_tree_fragment, __pyx_mstate->__pyx_n_u_reduce_cython, __pyx_mstate->__pyx_kp_b_iso88591_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[5])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[6] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_tree_fragment, __pyx_mstate->__pyx_n_u_reduce_cython, __pyx_mstate->__pyx_kp_b_iso88591_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[6])) goto bad;
   }
   {
     const __Pyx_PyCode_New_function_description descr = {2, 0, 0, 2, (unsigned int)(CO_OPTIMIZED|CO_NEWLOCALS), 3};
     PyObject* const varnames[] = {__pyx_mstate->__pyx_n_u_self, __pyx_mstate->__pyx_n_u_pyx_state};
-    __pyx_mstate_global->__pyx_codeobj_tab[6] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_tree_fragment, __pyx_mstate->__pyx_n_u_setstate_cython, __pyx_mstate->__pyx_kp_b_iso88591_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[6])) goto bad;
+    __pyx_mstate_global->__pyx_codeobj_tab[7] = __Pyx_PyCode_New(descr, varnames, __pyx_mstate->__pyx_kp_u_tree_fragment, __pyx_mstate->__pyx_n_u_setstate_cython, __pyx_mstate->__pyx_kp_b_iso88591_Q, tuple_dedup_map); if (unlikely(!__pyx_mstate_global->__pyx_codeobj_tab[7])) goto bad;
   }
   Py_DECREF(tuple_dedup_map);
   return 0;
@@ -7741,6 +8215,442 @@ static int __Pyx_RaiseUnexpectedTypeError(const char *expected, PyObject *obj) {
     return 0;
 }
 
+/* GivenExceptionMatches (used by PyErrExceptionMatches) */
+#if CYTHON_COMPILING_IN_CPYTHON
+static CYTHON_INLINE int __Pyx_inner_PyErr_GivenExceptionMatches2(PyObject *err, PyObject* exc_type1, PyObject *exc_type2) {
+    if (exc_type1) {
+        return __Pyx_IsAnySubtype2((PyTypeObject*)err, (PyTypeObject*)exc_type1, (PyTypeObject*)exc_type2);
+    } else {
+        return __Pyx_IsSubtype((PyTypeObject*)err, (PyTypeObject*)exc_type2);
+    }
+}
+static int __Pyx_PyErr_GivenExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
+    Py_ssize_t i, n;
+    assert(PyExceptionClass_Check(exc_type));
+    n = PyTuple_GET_SIZE(tuple);
+    for (i=0; i<n; i++) {
+        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
+    }
+    for (i=0; i<n; i++) {
+        PyObject *t = PyTuple_GET_ITEM(tuple, i);
+        if (likely(PyExceptionClass_Check(t))) {
+            if (__Pyx_inner_PyErr_GivenExceptionMatches2(exc_type, NULL, t)) return 1;
+        } else {
+        }
+    }
+    return 0;
+}
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject* exc_type) {
+    if (likely(err == exc_type)) return 1;
+    if (likely(PyExceptionClass_Check(err))) {
+        if (likely(PyExceptionClass_Check(exc_type))) {
+            return __Pyx_inner_PyErr_GivenExceptionMatches2(err, NULL, exc_type);
+        } else if (likely(PyTuple_Check(exc_type))) {
+            return __Pyx_PyErr_GivenExceptionMatchesTuple(err, exc_type);
+        } else {
+        }
+    }
+    return PyErr_GivenExceptionMatches(err, exc_type);
+}
+static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *exc_type1, PyObject *exc_type2) {
+    assert(PyExceptionClass_Check(exc_type1));
+    assert(PyExceptionClass_Check(exc_type2));
+    if (likely(err == exc_type1 || err == exc_type2)) return 1;
+    if (likely(PyExceptionClass_Check(err))) {
+        return __Pyx_inner_PyErr_GivenExceptionMatches2(err, exc_type1, exc_type2);
+    }
+    return (PyErr_GivenExceptionMatches(err, exc_type1) || PyErr_GivenExceptionMatches(err, exc_type2));
+}
+#endif
+
+/* PyErrExceptionMatches (used by PyObjectGetAttrStrNoError) */
+#if CYTHON_FAST_THREAD_STATE
+static int __Pyx_PyErr_ExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
+    Py_ssize_t i, n;
+    n = PyTuple_GET_SIZE(tuple);
+    for (i=0; i<n; i++) {
+        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
+    }
+    for (i=0; i<n; i++) {
+        if (__Pyx_PyErr_GivenExceptionMatches(exc_type, PyTuple_GET_ITEM(tuple, i))) return 1;
+    }
+    return 0;
+}
+static CYTHON_INLINE int __Pyx_PyErr_ExceptionMatchesInState(PyThreadState* tstate, PyObject* err) {
+    int result;
+    PyObject *exc_type;
+#if PY_VERSION_HEX >= 0x030C00A6
+    PyObject *current_exception = tstate->current_exception;
+    if (unlikely(!current_exception)) return 0;
+    exc_type = (PyObject*) Py_TYPE(current_exception);
+    if (exc_type == err) return 1;
+#else
+    exc_type = tstate->curexc_type;
+    if (exc_type == err) return 1;
+    if (unlikely(!exc_type)) return 0;
+#endif
+    #if CYTHON_AVOID_BORROWED_REFS
+    Py_INCREF(exc_type);
+    #endif
+    if (unlikely(PyTuple_Check(err))) {
+        result = __Pyx_PyErr_ExceptionMatchesTuple(exc_type, err);
+    } else {
+        result = __Pyx_PyErr_GivenExceptionMatches(exc_type, err);
+    }
+    #if CYTHON_AVOID_BORROWED_REFS
+    Py_DECREF(exc_type);
+    #endif
+    return result;
+}
+#endif
+
+/* PyObjectGetAttrStrNoError (used by HasAttr) */
+#if __PYX_LIMITED_VERSION_HEX < 0x030d0000
+static void __Pyx_PyObject_GetAttrStr_ClearAttributeError(void) {
+    __Pyx_PyThreadState_declare
+    __Pyx_PyThreadState_assign
+    if (likely(__Pyx_PyErr_ExceptionMatches(PyExc_AttributeError)))
+        __Pyx_PyErr_Clear();
+}
+#endif
+static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStrNoError(PyObject* obj, PyObject* attr_name) {
+    PyObject *result;
+#if __PYX_LIMITED_VERSION_HEX >= 0x030d0000
+    (void) PyObject_GetOptionalAttr(obj, attr_name, &result);
+    return result;
+#else
+#if CYTHON_COMPILING_IN_CPYTHON && CYTHON_USE_TYPE_SLOTS
+    PyTypeObject* tp = Py_TYPE(obj);
+    if (likely(tp->tp_getattro == PyObject_GenericGetAttr)) {
+        return _PyObject_GenericGetAttrWithDict(obj, attr_name, NULL, 1);
+    }
+#endif
+    result = __Pyx_PyObject_GetAttrStr(obj, attr_name);
+    if (unlikely(!result)) {
+        __Pyx_PyObject_GetAttrStr_ClearAttributeError();
+    }
+    return result;
+#endif
+}
+
+/* HasAttr (used by ImportImpl) */
+#if __PYX_LIMITED_VERSION_HEX < 0x030d0000
+static CYTHON_INLINE int __Pyx_HasAttr(PyObject *o, PyObject *n) {
+    PyObject *r;
+    if (unlikely(!PyUnicode_Check(n))) {
+        PyErr_SetString(PyExc_TypeError,
+                        "hasattr(): attribute name must be string");
+        return -1;
+    }
+    r = __Pyx_PyObject_GetAttrStrNoError(o, n);
+    if (!r) {
+        return (unlikely(PyErr_Occurred())) ? -1 : 0;
+    } else {
+        Py_DECREF(r);
+        return 1;
+    }
+}
+#endif
+
+/* TupleOrListFromArrayImpl (used by ListFromArray) */
+CYTHON_UNUSED static PyObject *
+__Pyx_PyList_FromArray(PyObject *const *src, Py_ssize_t n) {
+    PyObject *res = PyList_New(n);
+    if (unlikely(res == NULL)) return NULL;
+    #if CYTHON_COMPILING_IN_CPYTHON
+    __Pyx_copy_object_array(src, ((PyListObject*)res)->ob_item, n);
+    #else
+    Py_ssize_t i;
+    for (i = 0; i < n; i++) {
+        Py_INCREF(src[i]);
+        if (unlikely(__Pyx_PyList_SET_ITEM(res, i, src[i]) < (0))) {
+            Py_DECREF(res);
+            return NULL;
+        }
+    }
+    #endif
+    return res;
+}
+
+/* ImportImpl (used by Import) */
+static int __Pyx__Import_GetModule(PyObject *qualname, PyObject **module) {
+    PyObject *imported_module = PyImport_GetModule(qualname);
+    if (unlikely(!imported_module)) {
+        *module = NULL;
+        if (PyErr_Occurred()) {
+            return -1;
+        }
+        return 0;
+    }
+    *module = imported_module;
+    return 1;
+}
+static int __Pyx__Import_Lookup(PyObject *qualname, PyObject *const *imported_names, Py_ssize_t len_imported_names, PyObject **module) {
+    PyObject *imported_module;
+    PyObject *top_level_package_name;
+    Py_ssize_t i;
+    int status, module_found;
+    Py_ssize_t dot_index;
+    module_found = __Pyx__Import_GetModule(qualname, &imported_module);
+    if (unlikely(!module_found || module_found == -1)) {
+        *module = NULL;
+        return module_found;
+    }
+    if (imported_names) {
+        for (i = 0; i < len_imported_names; i++) {
+            PyObject *imported_name = imported_names[i];
+#if __PYX_LIMITED_VERSION_HEX < 0x030d0000
+            int has_imported_attribute = PyObject_HasAttr(imported_module, imported_name);
+#else
+            int has_imported_attribute = PyObject_HasAttrWithError(imported_module, imported_name);
+            if (unlikely(has_imported_attribute == -1)) goto error;
+#endif
+            if (!has_imported_attribute) {
+                goto not_found;
+            }
+        }
+        *module = imported_module;
+        return 1;
+    }
+    dot_index = PyUnicode_FindChar(qualname, '.', 0, PY_SSIZE_T_MAX, 1);
+    if (dot_index == -1) {
+        *module = imported_module;
+        return 1;
+    }
+    if (unlikely(dot_index == -2)) goto error;
+    top_level_package_name = PyUnicode_Substring(qualname, 0, dot_index);
+    if (unlikely(!top_level_package_name)) goto error;
+    Py_DECREF(imported_module);
+    status = __Pyx__Import_GetModule(top_level_package_name, module);
+    Py_DECREF(top_level_package_name);
+    return status;
+error:
+    Py_DECREF(imported_module);
+    *module = NULL;
+    return -1;
+not_found:
+    Py_DECREF(imported_module);
+    *module = NULL;
+    return 0;
+}
+static PyObject *__Pyx__Import(PyObject *name, PyObject *const *imported_names, Py_ssize_t len_imported_names, PyObject *qualname, PyObject *moddict, int level) {
+    PyObject *module = 0;
+    PyObject *empty_dict = 0;
+    PyObject *from_list = 0;
+    int module_found;
+    if (!qualname) {
+        qualname = name;
+    }
+    module_found = __Pyx__Import_Lookup(qualname, imported_names, len_imported_names, &module);
+    if (likely(module_found == 1)) {
+        return module;
+    } else if (unlikely(module_found == -1)) {
+        return NULL;
+    }
+    #if !CYTHON_COMPILING_IN_LIMITED_API && PY_VERSION_HEX >= 0x030f00a6
+    empty_dict = PyFrozenDict_New(NULL);
+    #else
+    empty_dict = PyDict_New();
+    #endif
+    if (unlikely(!empty_dict))
+        goto bad;
+    if (imported_names) {
+        from_list = __Pyx_PyList_FromArray(imported_names, len_imported_names);
+        if (unlikely(!from_list))
+            goto bad;
+    }
+    if (level == -1) {
+        const char* package_sep = strchr(__Pyx_MODULE_NAME, '.');
+        if (package_sep != (0)) {
+            module = PyImport_ImportModuleLevelObject(
+                name, moddict, empty_dict, from_list, 1);
+            if (unlikely(!module)) {
+                if (unlikely(!PyErr_ExceptionMatches(PyExc_ImportError)))
+                    goto bad;
+                PyErr_Clear();
+            }
+        }
+        level = 0;
+    }
+    if (!module) {
+        module = PyImport_ImportModuleLevelObject(
+            name, moddict, empty_dict, from_list, level);
+    }
+bad:
+    Py_XDECREF(from_list);
+    Py_XDECREF(empty_dict);
+    return module;
+}
+
+/* Import */
+static PyObject *__Pyx_Import(PyObject *name, PyObject *const *imported_names, Py_ssize_t len_imported_names, PyObject *qualname, int level) {
+    return __Pyx__Import(name, imported_names, len_imported_names, qualname, __pyx_mstate_global->__pyx_d, level);
+}
+
+/* RaiseErrorWithObjectTypes (used by PyNumberBinop) */
+static void __Pyx_RaiseErrorWithTypes1(PyObject* exc_type, const char *message, const char *arg, PyTypeObject *type_obj1, PyTypeObject *type_obj2) {
+    __Pyx_TypeName type_name1 = __Pyx_PyType_GetFullyQualifiedName(type_obj1);
+    #if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
+    if (unlikely(!type_name1)) return;
+    #endif
+    __Pyx_TypeName type_name2 = __Pyx_PyType_GetFullyQualifiedName(type_obj2);
+    #if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
+    if (unlikely(!type_name2)) goto type2_failed;
+    #endif
+    PyErr_Format(exc_type, message, arg, type_name1, type_name2);
+    __Pyx_DECREF_TypeName(type_name2);
+#if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
+type2_failed:
+#endif
+    __Pyx_DECREF_TypeName(type_name1);
+}
+
+/* PyNumberBinop */
+#if !(CYTHON_COMPILING_IN_PYPY || CYTHON_COMPILING_IN_GRAAL || CYTHON_COMPILING_IN_LIMITED_API)
+#if CYTHON_USE_TYPE_SLOTS || __PYX_LIMITED_VERSION_HEX >= 0x030A0000
+#ifndef __Pyx_DEFINED_BinopTypeError
+#define __Pyx_DEFINED_BinopTypeError
+static void __Pyx_BinopTypeError(PyObject *op1, PyObject *op2, const char* op, int inplace) {
+    char opname[4] = {op[0], op[1], 0, 0};
+    if (inplace) {
+        opname[op[1] ? 2 : 1] = '=';
+    }
+    __Pyx_RaiseErrorWithObjectTypes1(
+        PyExc_TypeError,
+        "unsupported operand type(s) for %.3s: '" __Pyx_FMT_TYPENAME "' and '" __Pyx_FMT_TYPENAME "'",
+        opname, op1, op2);
+}
+#endif
+#endif
+#ifndef __Pyx_DEFINED_PyNumber_Subtract_xfloat_object
+#define __Pyx_DEFINED_PyNumber_Subtract_xfloat_object
+static PyObject* __Pyx_PyNumber_Subtract_xfloat_object(PyObject *op1, PyObject *op2, int inplace) {
+    if (PyLong_CheckExact(op2)) {
+        double int_op2;
+        #if CYTHON_USE_PYLONG_INTERNALS
+        if (__Pyx_PyLong_IsCompact(op2)) {
+            Py_ssize_t compact_op2 = __Pyx_PyLong_CompactValue(op2);
+            if (compact_op2 == 0) return __Pyx_NewRef(op1);
+            int_op2 = (double) compact_op2;
+        } else
+        #endif
+        {
+            int_op2 = PyLong_AsDouble(op2);
+            if (unlikely((int_op2 == -1.) && PyErr_Occurred())) return NULL;
+            #if !CYTHON_USE_PYLONG_INTERNALS
+            if (int_op2 == 0.) return __Pyx_NewRef(op1);
+            #endif
+        }
+        double float_op1 = __Pyx_PyFloat_AS_DOUBLE(op1);
+        #if !CYTHON_ASSUME_SAFE_MACROS
+        if (unlikely((float_op1 == -1.) && PyErr_Occurred())) return NULL;
+        #endif
+        return PyFloat_FromDouble(float_op1 - int_op2);
+    }
+    if (PyLong_Check(op2)) {
+        binaryfunc slot_func = __Pyx_PyType_GetSubSlot(&PyFloat_Type, tp_as_number, nb_subtract, binaryfunc);
+        if (likely(slot_func)) {
+            return slot_func(op1, op2);
+        }
+    }
+    #if CYTHON_USE_TYPE_SLOTS || __PYX_LIMITED_VERSION_HEX >= 0x030A0000
+    {
+        PyTypeObject *type_op2 = Py_TYPE(op2);
+        binaryfunc slot_func = __Pyx_PyType_GetSubSlot(type_op2, tp_as_number, nb_subtract, binaryfunc);
+        if (likely(slot_func)) {
+            PyObject *result = slot_func(op1, op2);
+            if (likely(result != Py_NotImplemented)) {
+                return result;
+            }
+            Py_DECREF(result);
+        }
+        __Pyx_BinopTypeError(op1, op2, "-", inplace);
+        return NULL;
+    }
+    #else
+    return (inplace) ? PyNumber_InPlaceSubtract(op1, op2) : PyNumber_Subtract(op1, op2);
+    #endif
+}
+#endif
+#ifndef __Pyx_DEFINED_PyNumber_Subtract_xint_object
+#define __Pyx_DEFINED_PyNumber_Subtract_xint_object
+static PyObject* __Pyx_PyNumber_Subtract_xint_object(PyObject *op1, PyObject *op2, int inplace) {
+    if (PyFloat_CheckExact(op2)) {
+        double int_op1;
+        #if CYTHON_USE_PYLONG_INTERNALS
+        if (__Pyx_PyLong_IsCompact(op1)) {
+            Py_ssize_t compact_op1 = __Pyx_PyLong_CompactValue(op1);
+            int_op1 = (double) compact_op1;
+        } else
+        #endif
+        {
+            int_op1 = PyLong_AsDouble(op1);
+            if (unlikely((int_op1 == -1.) && PyErr_Occurred())) return NULL;
+        }
+        double float_op2 = __Pyx_PyFloat_AS_DOUBLE(op2);
+        #if !CYTHON_ASSUME_SAFE_MACROS
+        if (unlikely((float_op2 == -1.) && PyErr_Occurred())) return NULL;
+        #endif
+        return PyFloat_FromDouble(int_op1 - float_op2);
+    }
+    #if CYTHON_USE_TYPE_SLOTS || __PYX_LIMITED_VERSION_HEX >= 0x030A0000
+    {
+        PyTypeObject *type_op2 = Py_TYPE(op2);
+        binaryfunc slot_func = __Pyx_PyType_GetSubSlot(type_op2, tp_as_number, nb_subtract, binaryfunc);
+        if (likely(slot_func)) {
+            PyObject *result = slot_func(op1, op2);
+            if (likely(result != Py_NotImplemented)) {
+                return result;
+            }
+            Py_DECREF(result);
+        }
+        __Pyx_BinopTypeError(op1, op2, "-", inplace);
+        return NULL;
+    }
+    #else
+    return (inplace) ? PyNumber_InPlaceSubtract(op1, op2) : PyNumber_Subtract(op1, op2);
+    #endif
+}
+#endif
+static CYTHON_INLINE PyObject* __Pyx__PyNumber_Subtract_object_object(PyObject *op1, PyObject *op2, int inplace) {
+    if (PyFloat_CheckExact(op1)) {
+        if (PyFloat_CheckExact(op2)) {
+            double float_op2 = __Pyx_PyFloat_AS_DOUBLE(op2);
+            #if !CYTHON_ASSUME_SAFE_MACROS
+            if (unlikely((float_op2 == -1.) && PyErr_Occurred())) return NULL;
+            #endif
+            double float_op1 = __Pyx_PyFloat_AS_DOUBLE(op1);
+            #if !CYTHON_ASSUME_SAFE_MACROS
+            if (unlikely((float_op1 == -1.) && PyErr_Occurred())) return NULL;
+            #endif
+            return PyFloat_FromDouble(float_op1 - float_op2);
+        }
+        return __Pyx_PyNumber_Subtract_xfloat_object(op1, op2, inplace);
+    }
+    if (PyLong_CheckExact(op1)) {
+        if (PyLong_CheckExact(op2)) {
+            #if CYTHON_USE_PYLONG_INTERNALS
+            if (__Pyx_PyLong_IsCompact(op1)) {
+                Py_ssize_t int_op1 = __Pyx_PyLong_CompactValue(op1);
+                if (__Pyx_PyLong_IsCompact(op2)) {
+                    Py_ssize_t int_op2 = __Pyx_PyLong_CompactValue(op2);
+                    if (int_op2 == 0) return __Pyx_NewRef(op1);
+                    return PyLong_FromSsize_t(int_op1 - int_op2);
+                }
+            }
+            else if (__Pyx_PyLong_IsZero(op2)) return __Pyx_NewRef(op1);
+            #endif
+            binaryfunc slot_func = __Pyx_PyType_GetSubSlot(&PyLong_Type, tp_as_number, nb_subtract, binaryfunc);
+            if (likely(slot_func)) {
+                return slot_func(op1, op2);
+            }
+        }
+        return __Pyx_PyNumber_Subtract_xint_object(op1, op2, inplace);
+    }
+    return (inplace) ? PyNumber_InPlaceSubtract(op1, op2) : PyNumber_Subtract(op1, op2);
+}
+#endif
+
 /* AllocateExtensionType */
 static PyObject *__Pyx_AllocateExtensionType(PyTypeObject *t, int is_final) {
     if (is_final || likely(!__Pyx_PyType_HasFeature(t, Py_TPFLAGS_IS_ABSTRACT))) {
@@ -8174,24 +9084,6 @@ no_attr:
     return -1;
 }
 
-/* RaiseErrorWithObjectTypes (used by MergeVTables) */
-static void __Pyx_RaiseErrorWithTypes1(PyObject* exc_type, const char *message, const char *arg, PyTypeObject *type_obj1, PyTypeObject *type_obj2) {
-    __Pyx_TypeName type_name1 = __Pyx_PyType_GetFullyQualifiedName(type_obj1);
-    #if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
-    if (unlikely(!type_name1)) return;
-    #endif
-    __Pyx_TypeName type_name2 = __Pyx_PyType_GetFullyQualifiedName(type_obj2);
-    #if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
-    if (unlikely(!type_name2)) goto type2_failed;
-    #endif
-    PyErr_Format(exc_type, message, arg, type_name1, type_name2);
-    __Pyx_DECREF_TypeName(type_name2);
-#if CYTHON_COMPILING_IN_LIMITED_API && __PYX_LIMITED_VERSION_HEX < 0x030d0000
-type2_failed:
-#endif
-    __Pyx_DECREF_TypeName(type_name1);
-}
-
 /* MergeVTables (used by SetVTable) */
 static int __Pyx_MergeVtables(PyTypeObject *type) {
     int i=0;
@@ -8343,124 +9235,6 @@ static int __Pyx__DelItemOnTypeDict(PyTypeObject *tp, PyObject *k) {
     result = PyDict_DelItem(tp_dict, k);
     if (likely(!result)) PyType_Modified(tp);
     return result;
-}
-
-/* GivenExceptionMatches (used by PyErrExceptionMatches) */
-#if CYTHON_COMPILING_IN_CPYTHON
-static CYTHON_INLINE int __Pyx_inner_PyErr_GivenExceptionMatches2(PyObject *err, PyObject* exc_type1, PyObject *exc_type2) {
-    if (exc_type1) {
-        return __Pyx_IsAnySubtype2((PyTypeObject*)err, (PyTypeObject*)exc_type1, (PyTypeObject*)exc_type2);
-    } else {
-        return __Pyx_IsSubtype((PyTypeObject*)err, (PyTypeObject*)exc_type2);
-    }
-}
-static int __Pyx_PyErr_GivenExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
-    Py_ssize_t i, n;
-    assert(PyExceptionClass_Check(exc_type));
-    n = PyTuple_GET_SIZE(tuple);
-    for (i=0; i<n; i++) {
-        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
-    }
-    for (i=0; i<n; i++) {
-        PyObject *t = PyTuple_GET_ITEM(tuple, i);
-        if (likely(PyExceptionClass_Check(t))) {
-            if (__Pyx_inner_PyErr_GivenExceptionMatches2(exc_type, NULL, t)) return 1;
-        } else {
-        }
-    }
-    return 0;
-}
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches(PyObject *err, PyObject* exc_type) {
-    if (likely(err == exc_type)) return 1;
-    if (likely(PyExceptionClass_Check(err))) {
-        if (likely(PyExceptionClass_Check(exc_type))) {
-            return __Pyx_inner_PyErr_GivenExceptionMatches2(err, NULL, exc_type);
-        } else if (likely(PyTuple_Check(exc_type))) {
-            return __Pyx_PyErr_GivenExceptionMatchesTuple(err, exc_type);
-        } else {
-        }
-    }
-    return PyErr_GivenExceptionMatches(err, exc_type);
-}
-static CYTHON_INLINE int __Pyx_PyErr_GivenExceptionMatches2(PyObject *err, PyObject *exc_type1, PyObject *exc_type2) {
-    assert(PyExceptionClass_Check(exc_type1));
-    assert(PyExceptionClass_Check(exc_type2));
-    if (likely(err == exc_type1 || err == exc_type2)) return 1;
-    if (likely(PyExceptionClass_Check(err))) {
-        return __Pyx_inner_PyErr_GivenExceptionMatches2(err, exc_type1, exc_type2);
-    }
-    return (PyErr_GivenExceptionMatches(err, exc_type1) || PyErr_GivenExceptionMatches(err, exc_type2));
-}
-#endif
-
-/* PyErrExceptionMatches (used by PyObjectGetAttrStrNoError) */
-#if CYTHON_FAST_THREAD_STATE
-static int __Pyx_PyErr_ExceptionMatchesTuple(PyObject *exc_type, PyObject *tuple) {
-    Py_ssize_t i, n;
-    n = PyTuple_GET_SIZE(tuple);
-    for (i=0; i<n; i++) {
-        if (exc_type == PyTuple_GET_ITEM(tuple, i)) return 1;
-    }
-    for (i=0; i<n; i++) {
-        if (__Pyx_PyErr_GivenExceptionMatches(exc_type, PyTuple_GET_ITEM(tuple, i))) return 1;
-    }
-    return 0;
-}
-static CYTHON_INLINE int __Pyx_PyErr_ExceptionMatchesInState(PyThreadState* tstate, PyObject* err) {
-    int result;
-    PyObject *exc_type;
-#if PY_VERSION_HEX >= 0x030C00A6
-    PyObject *current_exception = tstate->current_exception;
-    if (unlikely(!current_exception)) return 0;
-    exc_type = (PyObject*) Py_TYPE(current_exception);
-    if (exc_type == err) return 1;
-#else
-    exc_type = tstate->curexc_type;
-    if (exc_type == err) return 1;
-    if (unlikely(!exc_type)) return 0;
-#endif
-    #if CYTHON_AVOID_BORROWED_REFS
-    Py_INCREF(exc_type);
-    #endif
-    if (unlikely(PyTuple_Check(err))) {
-        result = __Pyx_PyErr_ExceptionMatchesTuple(exc_type, err);
-    } else {
-        result = __Pyx_PyErr_GivenExceptionMatches(exc_type, err);
-    }
-    #if CYTHON_AVOID_BORROWED_REFS
-    Py_DECREF(exc_type);
-    #endif
-    return result;
-}
-#endif
-
-/* PyObjectGetAttrStrNoError (used by SetupReduce) */
-#if __PYX_LIMITED_VERSION_HEX < 0x030d0000
-static void __Pyx_PyObject_GetAttrStr_ClearAttributeError(void) {
-    __Pyx_PyThreadState_declare
-    __Pyx_PyThreadState_assign
-    if (likely(__Pyx_PyErr_ExceptionMatches(PyExc_AttributeError)))
-        __Pyx_PyErr_Clear();
-}
-#endif
-static CYTHON_INLINE PyObject* __Pyx_PyObject_GetAttrStrNoError(PyObject* obj, PyObject* attr_name) {
-    PyObject *result;
-#if __PYX_LIMITED_VERSION_HEX >= 0x030d0000
-    (void) PyObject_GetOptionalAttr(obj, attr_name, &result);
-    return result;
-#else
-#if CYTHON_COMPILING_IN_CPYTHON && CYTHON_USE_TYPE_SLOTS
-    PyTypeObject* tp = Py_TYPE(obj);
-    if (likely(tp->tp_getattro == PyObject_GenericGetAttr)) {
-        return _PyObject_GenericGetAttrWithDict(obj, attr_name, NULL, 1);
-    }
-#endif
-    result = __Pyx_PyObject_GetAttrStr(obj, attr_name);
-    if (unlikely(!result)) {
-        __Pyx_PyObject_GetAttrStr_ClearAttributeError();
-    }
-    return result;
-#endif
 }
 
 /* SetItemOnTypeDict (used by SetupReduce) */

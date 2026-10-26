@@ -119,20 +119,15 @@ cdef class CythonMatchingEngine:
 
     def get_trades(self):
         return self.trades.copy()
-
-    def match_orders(self):
+    
+    cdef void _sort_buy_orders(self):
         cdef int i, j
         cdef Order temp
-        cdef Order buy
-        cdef Order sell
-        cdef int trade_quantity
-        cdef int buy_remaining
-        cdef int sell_remaining
 
-        # Sort BUY orders: highest price first, then earliest sequence.
         for i in range(1, self.buy_count):
             temp = self.buy_orders[i]
             j = i - 1
+
             while j >= 0 and (
                 self.buy_orders[j].price < temp.price or
                 (self.buy_orders[j].price == temp.price and
@@ -140,12 +135,17 @@ cdef class CythonMatchingEngine:
             ):
                 self.buy_orders[j + 1] = self.buy_orders[j]
                 j -= 1
+
             self.buy_orders[j + 1] = temp
 
-        # Sort SELL orders: lowest price first, then earliest sequence.
+    cdef void _sort_sell_orders(self):
+        cdef int i, j
+        cdef Order temp
+
         for i in range(1, self.sell_count):
             temp = self.sell_orders[i]
             j = i - 1
+
             while j >= 0 and (
                 self.sell_orders[j].price > temp.price or
                 (self.sell_orders[j].price == temp.price and
@@ -153,7 +153,17 @@ cdef class CythonMatchingEngine:
             ):
                 self.sell_orders[j + 1] = self.sell_orders[j]
                 j -= 1
+
             self.sell_orders[j + 1] = temp
+
+    
+    cdef void _execute_matching(self):
+        cdef int i
+        cdef Order buy
+        cdef Order sell
+        cdef int trade_quantity
+        cdef int buy_remaining
+        cdef int sell_remaining
 
         while self.buy_count > 0 and self.sell_count > 0:
             buy = self.buy_orders[0]
@@ -163,6 +173,7 @@ cdef class CythonMatchingEngine:
                 break
 
             trade_quantity = min(buy.quantity, sell.quantity)
+
             self.trades.append(
                 (buy.order_id, sell.order_id, sell.price, trade_quantity)
             )
@@ -183,3 +194,26 @@ cdef class CythonMatchingEngine:
                 self.sell_count -= 1
             else:
                 self.sell_orders[0].quantity = sell_remaining
+
+    
+    def match_orders(self):
+        self._sort_buy_orders()
+        self._sort_sell_orders()
+        self._execute_matching()
+    
+    def profile_stages(self):
+        import time
+
+        start = time.perf_counter_ns()
+        self._sort_buy_orders()
+        buy_sort_ns = time.perf_counter_ns() - start
+
+        start = time.perf_counter_ns()
+        self._sort_sell_orders()
+        sell_sort_ns = time.perf_counter_ns() - start
+
+        start = time.perf_counter_ns()
+        self._execute_matching()
+        matching_ns = time.perf_counter_ns() - start
+
+        return buy_sort_ns, sell_sort_ns, matching_ns
