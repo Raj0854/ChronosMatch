@@ -2,8 +2,6 @@
 # cython_engine.pyx
 
 from libc.stdlib cimport malloc, free
-from libc.stddef cimport size_t
-from libc.string cimport memmove
 
 
 cdef struct Order:
@@ -98,11 +96,18 @@ cdef class CythonMatchingEngine:
         order.quantity = quantity
         order.sequence = self.next_sequence
 
+        
         self.sell_orders[self.sell_count] = order
         self.sell_count += 1
+
+        self._sift_up(
+            self.sell_orders, self.sell_count - 1, False
+        )
+
         self.next_sequence += 1
         self.used_order_ids.add(order_id)
         return True
+       
 
     
     def get_order_books(self):
@@ -169,62 +174,7 @@ cdef class CythonMatchingEngine:
         if self.buy_count > 0:
             self.buy_orders[0] = self.buy_orders[self.buy_count]
             self._sift_down_buy(0)
-    cdef void _sift_down(self, Order* orders, int start, int end, bint buy_side):
-        cdef int root = start
-        cdef int child
-        cdef int worst
-        cdef Order temp
 
-        while root * 2 + 1 <= end:
-            child = root * 2 + 1
-            worst = root
-
-            # Select the lower-priority child for the heap root.
-            if buy_side:
-                if (
-                    orders[child].price < orders[worst].price or
-                    (
-                        orders[child].price == orders[worst].price and
-                        orders[child].sequence > orders[worst].sequence
-                    )
-                ):
-                    worst = child
-
-                if child + 1 <= end and (
-                    orders[child + 1].price < orders[worst].price or
-                    (
-                        orders[child + 1].price == orders[worst].price and
-                        orders[child + 1].sequence > orders[worst].sequence
-                    )
-                ):
-                    worst = child + 1
-
-            else:
-                if (
-                    orders[child].price > orders[worst].price or
-                    (
-                        orders[child].price == orders[worst].price and
-                        orders[child].sequence > orders[worst].sequence
-                    )
-                ):
-                    worst = child
-
-                if child + 1 <= end and (
-                    orders[child + 1].price > orders[worst].price or
-                    (
-                        orders[child + 1].price == orders[worst].price and
-                        orders[child + 1].sequence > orders[worst].sequence
-                    )
-                ):
-                    worst = child + 1
-
-            if worst == root:
-                return
-
-            temp = orders[root]
-            orders[root] = orders[worst]
-            orders[worst] = temp
-            root = worst
     cdef void _sift_up_buy(self, int index):
         cdef int parent
         cdef Order temp
@@ -280,59 +230,49 @@ cdef class CythonMatchingEngine:
             self.buy_orders[best] = temp
 
             index = best
-
-    cdef void _sort_buy_orders(self):
-        cdef int start, end
+    
+    cdef void _sift_down_sell(self, int index):
+        cdef int left
+        cdef int right
+        cdef int best
         cdef Order temp
 
-        if self.buy_count < 2:
+        while True:
+            left = 2 * index + 1
+            right = left + 1
+            best = index
+
+            if left < self.sell_count and self._higher_priority(
+                self.sell_orders[left], self.sell_orders[best], False
+            ):
+                best = left
+
+            if right < self.sell_count and self._higher_priority(
+                self.sell_orders[right], self.sell_orders[best], False
+            ):
+                best = right
+
+            if best == index:
+                break
+
+            temp = self.sell_orders[index]
+            self.sell_orders[index] = self.sell_orders[best]
+            self.sell_orders[best] = temp
+
+            index = best
+
+    cdef void _pop_sell_root(self):
+        if self.sell_count <= 0:
             return
 
-        start = self.buy_count // 2 - 1
+        self.sell_count -= 1
 
-        while start >= 0:
-            self._sift_down(
-                self.buy_orders, start, self.buy_count - 1, True
-            )
-            start -= 1
-
-        end = self.buy_count - 1
-
-        while end > 0:
-            temp = self.buy_orders[0]
-            self.buy_orders[0] = self.buy_orders[end]
-            self.buy_orders[end] = temp
-
-            end -= 1
-            self._sift_down(self.buy_orders, 0, end, True)
+        if self.sell_count > 0:
+            self.sell_orders[0] = self.sell_orders[self.sell_count]
+            self._sift_down_sell(0)
 
 
-    cdef void _sort_sell_orders(self):
-        cdef int start, end
-        cdef Order temp
-
-        if self.sell_count < 2:
-            return
-
-        start = self.sell_count // 2 - 1
-
-        while start >= 0:
-            self._sift_down(
-                self.sell_orders, start, self.sell_count - 1, False
-            )
-            start -= 1
-
-        end = self.sell_count - 1
-
-        while end > 0:
-            temp = self.sell_orders[0]
-            self.sell_orders[0] = self.sell_orders[end]
-            self.sell_orders[end] = temp
-
-            end -= 1
-            self._sift_down(self.sell_orders, 0, end, False)
-
-
+ 
 
     
     
@@ -380,23 +320,13 @@ cdef class CythonMatchingEngine:
             else:
                 self.buy_orders[0].quantity = buy_remaining
 
+            
             if sell_remaining == 0:
                 sell_full_fills += 1
-
-                if self.sell_count > 1:
-                    shift_start_ns = time.perf_counter_ns()
-
-                    memmove(
-                        self.sell_orders,
-                        self.sell_orders + 1,
-                        (self.sell_count - 1) * sizeof(Order)
-                    )
-
-                    shift_ns += time.perf_counter_ns() - shift_start_ns
-
-                self.sell_count -= 1
+                self._pop_sell_root()
             else:
                 self.sell_orders[0].quantity = sell_remaining
+
 
         self._last_profile = (
             loop_ns, shift_ns, buy_full_fills, sell_full_fills
@@ -404,26 +334,19 @@ cdef class CythonMatchingEngine:
 
     
     def match_orders(self):
-        self._sort_sell_orders()
         self._execute_matching()
 
+    
     
     def profile_stages(self):
         import time
 
         start = time.perf_counter_ns()
-        self._sort_buy_orders()
-        buy_sort_ns = time.perf_counter_ns() - start
-
-        start = time.perf_counter_ns()
-        self._sort_sell_orders()
-        sell_sort_ns = time.perf_counter_ns() - start
-
-        start = time.perf_counter_ns()
         self._execute_matching()
         matching_ns = time.perf_counter_ns() - start
 
-        return buy_sort_ns, sell_sort_ns, matching_ns
-    
+        # Heap insertion/removal does not require full-array sorting.
+        return 0, 0, matching_ns
+
     def get_last_profile(self):
         return self._last_profile

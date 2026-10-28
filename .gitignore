@@ -1,0 +1,18 @@
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Build artifacts
+build/
+*.obj
+*.pyd
+*.exp
+*.lib
+
+# Generated Cython files
+cython_engine.c
+order_struct.c
+
+# Virtual environments
+.venv/
+venv/

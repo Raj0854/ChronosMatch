@@ -5,6 +5,7 @@ class MatchingEngine:
         self.trades = []
         self.next_sequence = 0
         self.used_order_ids = set()
+        self.verbose = True
 
     def validate_order(self, order_id, price, quantity):
         if order_id <= 0 or price <= 0 or quantity <= 0:
@@ -51,10 +52,11 @@ class MatchingEngine:
                 break
             trade_quantity = min(buy[2], sell[2])
             self.trades.append((buy[0], sell[0], sell[1], trade_quantity))
-            print(
-                f"Trade: Buy Order {buy[0]} + Sell Order {sell[0]} | "
-                f"Price: {sell[1]} | Quantity: {trade_quantity}"
-            )
+            if self.verbose:
+                print(
+                    f"Trade: Buy Order {buy[0]} + Sell Order {sell[0]} | "
+                    f"Price: {sell[1]} | Quantity: {trade_quantity}"
+                )
 
             buy_remaining = buy[2] - trade_quantity
             sell_remaining = sell[2] - trade_quantity

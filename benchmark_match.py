@@ -67,7 +67,8 @@ def percentile(values, percent):
 def measure_engine(name, run_engine, orders):
     # Warm-up runs are excluded from the measurements.
     for _ in range(WARMUP_RUNS):
-        run_engine(orders)
+        with redirect_stdout(io.StringIO()):
+            run_engine(orders)
 
     elapsed_ms = []
     reference_result = None
