@@ -5,7 +5,7 @@ class MatchingEngine:
         self.trades = []
         self.next_sequence = 0
         self.used_order_ids = set()
-        self.verbose = True
+        self.verbose = False
 
     def validate_order(self, order_id, price, quantity):
         if order_id <= 0 or price <= 0 or quantity <= 0:

@@ -1,6 +1,6 @@
 
 # cython_engine.pyx
-
+import time
 from libc.stdlib cimport malloc, free
 
 
@@ -276,9 +276,8 @@ cdef class CythonMatchingEngine:
 
     
     
-    cdef void _execute_matching(self):
-        import time
-
+    
+    cdef void _execute_matching(self, bint profile=False):
         cdef Order buy
         cdef Order sell
         cdef int trade_quantity
@@ -287,20 +286,21 @@ cdef class CythonMatchingEngine:
 
         cdef long long loop_ns = 0
         cdef long long shift_ns = 0
-        cdef long long start_ns
-        cdef long long shift_start_ns
+        cdef long long start_ns = 0
 
         cdef int buy_full_fills = 0
         cdef int sell_full_fills = 0
 
         while self.buy_count > 0 and self.sell_count > 0:
-            start_ns = time.perf_counter_ns()
+            if profile:
+                start_ns = time.perf_counter_ns()
 
             buy = self.buy_orders[0]
             sell = self.sell_orders[0]
 
             if buy.price < sell.price:
-                loop_ns += time.perf_counter_ns() - start_ns
+                if profile:
+                    loop_ns += time.perf_counter_ns() - start_ns
                 break
 
             trade_quantity = min(buy.quantity, sell.quantity)
@@ -312,7 +312,8 @@ cdef class CythonMatchingEngine:
             buy_remaining = buy.quantity - trade_quantity
             sell_remaining = sell.quantity - trade_quantity
 
-            loop_ns += time.perf_counter_ns() - start_ns
+            if profile:
+                loop_ns += time.perf_counter_ns() - start_ns
 
             if buy_remaining == 0:
                 buy_full_fills += 1
@@ -320,13 +321,11 @@ cdef class CythonMatchingEngine:
             else:
                 self.buy_orders[0].quantity = buy_remaining
 
-            
             if sell_remaining == 0:
                 sell_full_fills += 1
                 self._pop_sell_root()
             else:
                 self.sell_orders[0].quantity = sell_remaining
-
 
         self._last_profile = (
             loop_ns, shift_ns, buy_full_fills, sell_full_fills
@@ -334,18 +333,18 @@ cdef class CythonMatchingEngine:
 
     
     def match_orders(self):
-        self._execute_matching()
+        # Normal execution: no per-iteration timer calls.
+        self._execute_matching(False)
 
-    
-    
     def profile_stages(self):
-        import time
-
         start = time.perf_counter_ns()
-        self._execute_matching()
+
+        # Profiling execution: collect per-iteration timings.
+        self._execute_matching(True)
+
         matching_ns = time.perf_counter_ns() - start
 
-        # Heap insertion/removal does not require full-array sorting.
+        # Heap operations do not require full-array sorting.
         return 0, 0, matching_ns
 
     def get_last_profile(self):
