@@ -1,7 +1,8 @@
 
 # cython_engine.pyx
 import time
-from libc.stdlib cimport malloc, free
+
+from libc.stdlib cimport malloc, free, realloc
 
 
 cdef struct Order:
@@ -10,7 +11,11 @@ cdef struct Order:
     int quantity
     int sequence
 
-
+cdef struct Trade:
+    int buy_order_id
+    int sell_order_id
+    int price
+    int quantity
 cdef class CythonMatchingEngine:
     cdef Order* buy_orders
     cdef Order* sell_orders
@@ -19,8 +24,10 @@ cdef class CythonMatchingEngine:
     cdef int capacity
     cdef int next_sequence
     cdef set used_order_ids
-    cdef list trades
     cdef tuple _last_profile
+    cdef Trade* trade_records
+    cdef int trade_count
+    cdef int trade_capacity
 
     def __cinit__(self, int capacity=10000):
         self.buy_orders = NULL
@@ -30,8 +37,10 @@ cdef class CythonMatchingEngine:
         self.next_sequence = 0
         self.capacity = 0
         self.used_order_ids = set()
-        self.trades = []
         self._last_profile = (0, 0, 0, 0)
+        self.trade_records = NULL
+        self.trade_count = 0
+        self.trade_capacity = 0
 
         if capacity <= 0:
             raise ValueError("Capacity must be positive")
@@ -48,11 +57,38 @@ cdef class CythonMatchingEngine:
 
         self.capacity = capacity
 
+    cdef bint _ensure_trade_capacity(self):
+        cdef int new_capacity
+        cdef Trade* new_records
+
+        if self.trade_count < self.trade_capacity:
+            return True
+
+        if self.trade_capacity == 0:
+            new_capacity = 1024
+        else:
+            new_capacity = self.trade_capacity * 2
+
+        new_records = <Trade*>realloc(
+            self.trade_records,
+            new_capacity * sizeof(Trade)
+        )
+
+        if new_records == NULL:
+            return False
+
+        self.trade_records = new_records
+        self.trade_capacity = new_capacity
+
+        return True
+
     def __dealloc__(self):
         if self.buy_orders != NULL:
             free(self.buy_orders)
         if self.sell_orders != NULL:
             free(self.sell_orders)
+        if self.trade_records != NULL:
+            free(self.trade_records)
 
     cdef bint _valid_order(self, int order_id, int price, int quantity):
         if order_id <= 0 or price <= 0 or quantity <= 0:
@@ -137,7 +173,18 @@ cdef class CythonMatchingEngine:
 
 
     def get_trades(self):
-        return self.trades.copy()
+        cdef int i
+        cdef list result = []
+
+        for i in range(self.trade_count):
+            result.append((
+                self.trade_records[i].buy_order_id,
+                self.trade_records[i].sell_order_id,
+                self.trade_records[i].price,
+                self.trade_records[i].quantity
+            ))
+
+        return result
     
     cdef bint _higher_priority(self, Order a, Order b, bint buy_side):
         if a.price != b.price:
@@ -303,17 +350,26 @@ cdef class CythonMatchingEngine:
                     loop_ns += time.perf_counter_ns() - start_ns
                 break
 
-            trade_quantity = min(buy.quantity, sell.quantity)
+            if buy.quantity < sell.quantity:
+                trade_quantity = buy.quantity
+            else:
+                trade_quantity = sell.quantity
 
-            self.trades.append(
-                (buy.order_id, sell.order_id, sell.price, trade_quantity)
-            )
+            if self.trade_count >= self.trade_capacity:
+                if not self._ensure_trade_capacity():
+                    raise MemoryError("Unable to allocate trade memory")
+
+            self.trade_records[self.trade_count].buy_order_id = buy.order_id
+            self.trade_records[self.trade_count].sell_order_id = sell.order_id
+            self.trade_records[self.trade_count].price = sell.price
+            self.trade_records[self.trade_count].quantity = trade_quantity
+
+            self.trade_count += 1
 
             buy_remaining = buy.quantity - trade_quantity
             sell_remaining = sell.quantity - trade_quantity
 
-            if profile:
-                loop_ns += time.perf_counter_ns() - start_ns
+            
 
             if buy_remaining == 0:
                 buy_full_fills += 1
@@ -326,7 +382,8 @@ cdef class CythonMatchingEngine:
                 self._pop_sell_root()
             else:
                 self.sell_orders[0].quantity = sell_remaining
-
+            if profile:
+                loop_ns += time.perf_counter_ns() - start_ns
         self._last_profile = (
             loop_ns, shift_ns, buy_full_fills, sell_full_fills
         )

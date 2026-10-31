@@ -185,5 +185,32 @@ class TestCythonMatchingEngine(unittest.TestCase):
         self.assertEqual(python_engine.buy_orders, cython_engine.get_order_books()[0])
         self.assertEqual(python_engine.sell_orders, cython_engine.get_order_books()[1])
 
+    def test_c_level_trade_storage(self):
+        engine = CythonMatchingEngine()
+        engine.add_buy_order(101, 100, 10)
+        engine.add_sell_order(201, 90, 5)
+        engine.match_orders()
+        self.assertEqual(engine.get_trades(), [(101, 201, 90, 5)])
+
+    def test_trade_memory_growth(self):
+        engine = CythonMatchingEngine()
+
+        total_orders = 1025
+
+        # Add 1025 BUY orders
+        for i in range(total_orders):
+            engine.add_buy_order(i + 1, 100, 1)
+
+        # Add 1025 SELL orders
+        for i in range(total_orders):
+            engine.add_sell_order(i + 10001, 90, 1)
+
+        engine.match_orders()
+
+        trades = engine.get_trades()
+
+        self.assertEqual(len(trades), 1025)
+        self.assertEqual(trades[0], (1, 10001, 90, 1))
+        self.assertEqual(trades[-1], (1025, 11025, 90, 1))
 if __name__ == "__main__":
     unittest.main()
