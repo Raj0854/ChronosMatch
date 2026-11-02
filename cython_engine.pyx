@@ -324,68 +324,77 @@ cdef class CythonMatchingEngine:
     
     
     
-    cdef void _execute_matching(self, bint profile=False):
-        cdef Order buy
-        cdef Order sell
-        cdef int trade_quantity
-        cdef int buy_remaining
-        cdef int sell_remaining
+    
+cdef void _execute_matching(self, bint profile=False):
+    cdef Order buy
+    cdef Order sell
+    cdef int trade_quantity
+    cdef int buy_remaining
+    cdef int sell_remaining
 
-        cdef long long loop_ns = 0
-        cdef long long shift_ns = 0
-        cdef long long start_ns = 0
+    cdef long long loop_ns = 0
+    cdef long long start_ns = 0
 
-        cdef int buy_full_fills = 0
-        cdef int sell_full_fills = 0
+    cdef int buy_full_fills = 0
+    cdef int sell_full_fills = 0
 
-        while self.buy_count > 0 and self.sell_count > 0:
-            if profile:
-                start_ns = time.perf_counter_ns()
+    while self.buy_count > 0 and self.sell_count > 0:
 
-            buy = self.buy_orders[0]
-            sell = self.sell_orders[0]
+        if profile:
+            start_ns = time.perf_counter_ns()
 
-            if buy.price < sell.price:
-                if profile:
-                    loop_ns += time.perf_counter_ns() - start_ns
-                break
+        buy = self.buy_orders[0]
+        sell = self.sell_orders[0]
 
-            if buy.quantity < sell.quantity:
-                trade_quantity = buy.quantity
-            else:
-                trade_quantity = sell.quantity
-
-            if self.trade_count >= self.trade_capacity:
-                if not self._ensure_trade_capacity():
-                    raise MemoryError("Unable to allocate trade memory")
-
-            self.trade_records[self.trade_count].buy_order_id = buy.order_id
-            self.trade_records[self.trade_count].sell_order_id = sell.order_id
-            self.trade_records[self.trade_count].price = sell.price
-            self.trade_records[self.trade_count].quantity = trade_quantity
-
-            self.trade_count += 1
-
-            buy_remaining = buy.quantity - trade_quantity
-            sell_remaining = sell.quantity - trade_quantity
-
-            
-
-            if buy_remaining == 0:
-                buy_full_fills += 1
-                self._pop_buy_root()
-            else:
-                self.buy_orders[0].quantity = buy_remaining
-
-            if sell_remaining == 0:
-                sell_full_fills += 1
-                self._pop_sell_root()
-            else:
-                self.sell_orders[0].quantity = sell_remaining
+        if buy.price < sell.price:
             if profile:
                 loop_ns += time.perf_counter_ns() - start_ns
+            break
+
+        if buy.quantity < sell.quantity:
+            trade_quantity = buy.quantity
+        else:
+            trade_quantity = sell.quantity
+
+        if self.trade_count >= self.trade_capacity:
+            if not self._ensure_trade_capacity():
+                raise MemoryError("Unable to allocate trade memory")
+
+        self.trade_records[self.trade_count].buy_order_id = buy.order_id
+        self.trade_records[self.trade_count].sell_order_id = sell.order_id
+        self.trade_records[self.trade_count].price = sell.price
+        self.trade_records[self.trade_count].quantity = trade_quantity
+
+        self.trade_count += 1
+
+        buy_remaining = buy.quantity - trade_quantity
+        sell_remaining = sell.quantity - trade_quantity
+
+        if buy_remaining == 0:
+            if profile:
+                buy_full_fills += 1
+
+            self._pop_buy_root()
+        else:
+            self.buy_orders[0].quantity = buy_remaining
+
+        if sell_remaining == 0:
+            if profile:
+                sell_full_fills += 1
+
+            self._pop_sell_root()
+        else:
+            self.sell_orders[0].quantity = sell_remaining
+
+        if profile:
+            loop_ns += time.perf_counter_ns() - start_ns
+
+    if profile:
         self._last_profile = (
-            loop_ns, shift_ns, buy_full_fills, sell_full_fills
+            loop_ns,
+            0,
+            buy_full_fills,
+            sell_full_fills
         )
 
     
