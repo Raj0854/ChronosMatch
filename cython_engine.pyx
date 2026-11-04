@@ -3,13 +3,15 @@
 import time
 
 from libc.stdlib cimport malloc, free, realloc
-
-
+from libc.stddef cimport size_t
+from libc.stdint cimport SIZE_MAX
+from libc.limits cimport INT_MAX
+from libc.stdint cimport int64_t
 cdef struct Order:
     int order_id
     int price
     int quantity
-    int sequence
+    int64_t sequence
 
 cdef struct Trade:
     int buy_order_id
@@ -22,7 +24,7 @@ cdef class CythonMatchingEngine:
     cdef int buy_count
     cdef int sell_count
     cdef int capacity
-    cdef int next_sequence
+    cdef int64_t next_sequence
     cdef set used_order_ids
     cdef tuple _last_profile
     cdef Trade* trade_records
@@ -45,6 +47,9 @@ cdef class CythonMatchingEngine:
         if capacity <= 0:
             raise ValueError("Capacity must be positive")
 
+        if capacity > SIZE_MAX // sizeof(Order):
+            raise OverflowError("Order capacity is too large")
+
         self.buy_orders = <Order*>malloc(capacity * sizeof(Order))
         if self.buy_orders == NULL:
             raise MemoryError()
@@ -58,8 +63,14 @@ cdef class CythonMatchingEngine:
         self.capacity = capacity
 
     cdef bint _ensure_trade_capacity(self):
-        cdef int new_capacity
+        cdef size_t new_capacity
+        cdef size_t max_capacity
         cdef Trade* new_records
+
+        max_capacity = SIZE_MAX // sizeof(Trade)
+
+        if max_capacity > INT_MAX:
+            max_capacity = INT_MAX
 
         if self.trade_count < self.trade_capacity:
             return True
@@ -67,7 +78,13 @@ cdef class CythonMatchingEngine:
         if self.trade_capacity == 0:
             new_capacity = 1024
         else:
+            if self.trade_capacity > max_capacity // 2:
+                return False
+
             new_capacity = self.trade_capacity * 2
+
+        if new_capacity > max_capacity:
+            return False
 
         new_records = <Trade*>realloc(
             self.trade_records,
@@ -78,7 +95,7 @@ cdef class CythonMatchingEngine:
             return False
 
         self.trade_records = new_records
-        self.trade_capacity = new_capacity
+        self.trade_capacity = <int>new_capacity
 
         return True
 
@@ -136,9 +153,7 @@ cdef class CythonMatchingEngine:
         self.sell_orders[self.sell_count] = order
         self.sell_count += 1
 
-        self._sift_up(
-            self.sell_orders, self.sell_count - 1, False
-        )
+        self._sift_up_sell(self.sell_count - 1)
 
         self.next_sequence += 1
         self.used_order_ids.add(order_id)
@@ -194,24 +209,7 @@ cdef class CythonMatchingEngine:
 
         return a.sequence < b.sequence
 
-    cdef void _sift_up(self, Order* orders, int index, bint buy_side):
-        cdef int parent
-        cdef Order temp
-
-        while index > 0:
-            parent = (index - 1) // 2
-
-            if not self._higher_priority(
-                orders[index], orders[parent], buy_side
-            ):
-                break
-
-            temp = orders[parent]
-            orders[parent] = orders[index]
-            orders[index] = temp
-
-            index = parent
-
+    
     cdef void _pop_buy_root(self):
         if self.buy_count <= 0:
             return
@@ -221,7 +219,32 @@ cdef class CythonMatchingEngine:
         if self.buy_count > 0:
             self.buy_orders[0] = self.buy_orders[self.buy_count]
             self._sift_down_buy(0)
+    cdef void _sift_up_sell(self, int index):
+        cdef int parent
+        cdef Order temp
 
+        while index > 0:
+            parent = (index - 1) // 2
+
+            if (
+                self.sell_orders[parent].price <
+                self.sell_orders[index].price
+            ):
+                break
+
+            if (
+                self.sell_orders[parent].price ==
+                self.sell_orders[index].price and
+                self.sell_orders[parent].sequence <
+                self.sell_orders[index].sequence
+            ):
+                break
+
+            temp = self.sell_orders[parent]
+            self.sell_orders[parent] = self.sell_orders[index]
+            self.sell_orders[index] = temp
+
+            index = parent
     cdef void _sift_up_buy(self, int index):
         cdef int parent
         cdef Order temp
@@ -318,99 +341,87 @@ cdef class CythonMatchingEngine:
             self.sell_orders[0] = self.sell_orders[self.sell_count]
             self._sift_down_sell(0)
 
-
- 
-
     
-    
-    
-    
-cdef void _execute_matching(self, bint profile=False):
-    cdef Order buy
-    cdef Order sell
-    cdef int trade_quantity
-    cdef int buy_remaining
-    cdef int sell_remaining
+    cdef void _execute_matching(self, bint profile=False):
+        cdef Order buy
+        cdef Order sell
+        cdef int trade_quantity
+        cdef int buy_remaining
+        cdef int sell_remaining
 
-    cdef long long loop_ns = 0
-    cdef long long start_ns = 0
+        cdef long long loop_ns = 0
+        cdef long long start_ns = 0
 
-    cdef int buy_full_fills = 0
-    cdef int sell_full_fills = 0
+        cdef int buy_full_fills = 0
+        cdef int sell_full_fills = 0
 
-    while self.buy_count > 0 and self.sell_count > 0:
-
+        # Start timing only once.
         if profile:
             start_ns = time.perf_counter_ns()
 
-        buy = self.buy_orders[0]
-        sell = self.sell_orders[0]
+        while self.buy_count > 0 and self.sell_count > 0:
 
-        if buy.price < sell.price:
-            if profile:
-                loop_ns += time.perf_counter_ns() - start_ns
-            break
+            buy = self.buy_orders[0]
+            sell = self.sell_orders[0]
 
-        if buy.quantity < sell.quantity:
-            trade_quantity = buy.quantity
-        else:
-            trade_quantity = sell.quantity
+            if buy.price < sell.price:
+                break
 
-        if self.trade_count >= self.trade_capacity:
-            if not self._ensure_trade_capacity():
-                raise MemoryError("Unable to allocate trade memory")
+            if buy.quantity < sell.quantity:
+                trade_quantity = buy.quantity
+            else:
+                trade_quantity = sell.quantity
 
-        self.trade_records[self.trade_count].buy_order_id = buy.order_id
-        self.trade_records[self.trade_count].sell_order_id = sell.order_id
-        self.trade_records[self.trade_count].price = sell.price
-        self.trade_records[self.trade_count].quantity = trade_quantity
+            if self.trade_count >= self.trade_capacity:
+                if not self._ensure_trade_capacity():
+                    raise MemoryError("Unable to allocate trade memory")
 
-        self.trade_count += 1
+            self.trade_records[self.trade_count].buy_order_id = buy.order_id
+            self.trade_records[self.trade_count].sell_order_id = sell.order_id
+            self.trade_records[self.trade_count].price = sell.price
+            self.trade_records[self.trade_count].quantity = trade_quantity
 
-        buy_remaining = buy.quantity - trade_quantity
-        sell_remaining = sell.quantity - trade_quantity
+            self.trade_count += 1
 
-        if buy_remaining == 0:
-            if profile:
-                buy_full_fills += 1
+            buy_remaining = buy.quantity - trade_quantity
+            sell_remaining = sell.quantity - trade_quantity
 
-            self._pop_buy_root()
-        else:
-            self.buy_orders[0].quantity = buy_remaining
+            if buy_remaining == 0:
+                if profile:
+                    buy_full_fills += 1
 
-        if sell_remaining == 0:
-            if profile:
-                sell_full_fills += 1
+                self._pop_buy_root()
+            else:
+                self.buy_orders[0].quantity = buy_remaining
 
-            self._pop_sell_root()
-        else:
-            self.sell_orders[0].quantity = sell_remaining
+            if sell_remaining == 0:
+                if profile:
+                    sell_full_fills += 1
 
+                self._pop_sell_root()
+            else:
+                self.sell_orders[0].quantity = sell_remaining
+
+        # Stop timing only once.
         if profile:
-            loop_ns += time.perf_counter_ns() - start_ns
+            loop_ns = time.perf_counter_ns() - start_ns
 
-    if profile:
-        self._last_profile = (
-            loop_ns,
-            0,
-            buy_full_fills,
-            sell_full_fills
-        )
-
-    
+            self._last_profile = (
+                loop_ns,
+                0,
+                buy_full_fills,
+                sell_full_fills
+            )
+        
     def match_orders(self):
         # Normal execution: no per-iteration timer calls.
         self._execute_matching(False)
 
     def profile_stages(self):
-        start = time.perf_counter_ns()
-
-        # Profiling execution: collect per-iteration timings.
         self._execute_matching(True)
 
-        matching_ns = time.perf_counter_ns() - start
+        matching_ns = self._last_profile[0]
 
-        # Heap operations do not require full-array sorting.
         return 0, 0, matching_ns
 
     def get_last_profile(self):

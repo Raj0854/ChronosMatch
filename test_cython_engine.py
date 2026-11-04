@@ -195,7 +195,7 @@ class TestCythonMatchingEngine(unittest.TestCase):
     def test_trade_memory_growth(self):
         engine = CythonMatchingEngine()
 
-        total_orders = 1025
+        total_orders = 10000
 
         # Add 1025 BUY orders
         for i in range(total_orders):
@@ -209,8 +209,8 @@ class TestCythonMatchingEngine(unittest.TestCase):
 
         trades = engine.get_trades()
 
-        self.assertEqual(len(trades), 1025)
+        self.assertEqual(len(trades), 10000)
         self.assertEqual(trades[0], (1, 10001, 90, 1))
-        self.assertEqual(trades[-1], (1025, 11025, 90, 1))
+        self.assertEqual(trades[-1], (10000, 20000, 90, 1))
 if __name__ == "__main__":
     unittest.main()

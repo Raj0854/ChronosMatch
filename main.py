@@ -1,116 +1,268 @@
-import mmap
-import struct
-import tempfile
 import asyncio
+import time
+import struct
+import multiprocessing as mp
+
+from multiprocessing import shared_memory
 from market_simulator import generate_orders
 from matching_engine import MatchingEngine
 
+
 # --------------------------------------------------
-# STEP 1: Define one order's binary layout with struct
+# STEP 1: Binary memory layouts
 # --------------------------------------------------
-# <  = little-endian byte order
-# I  = unsigned 32-bit integer (4 bytes)
-# III = three integers: order ID, price ticks, quantity
-# Total record size = 3 * 4 = 12 bytes
+
+# order_id, side_code, price_ticks, quantity
 ORDER = struct.Struct("<IIII")
 
+# write_pos, read_pos, count, capacity
+HEADER = struct.Struct("<IIII")
+
 
 # --------------------------------------------------
-# STEP 2: Create a ring buffer
+# STEP 2: Shared Memory Ring Buffer
 # --------------------------------------------------
+
 class RingBuffer:
-    def __init__(self, memory, capacity):
-        self.memory = memory  # mmap #memory: jahan order bytes store hongi
-        self.capacity = capacity  # maximum number of orders
-        self.write_pos = 0  # next slot to write into
-        self.read_pos = 0  # next slot to read from
-        self.count = 0  # number of orders currently stored
+    def __init__(self, shm, lock):
+        self.shm = shm
+        self.lock = lock
 
     def push(self, order_id, side_code, price_ticks, quantity):
-        if self.count == self.capacity:
-            return False
-        offset = self.write_pos * ORDER.size
-        ORDER.pack_into(self.memory, offset, order_id, side_code, price_ticks, quantity)
-        self.write_pos = (self.write_pos + 1) % self.capacity
-        self.count += 1
-        return True
+        with self.lock:
+            write_pos, read_pos, count, capacity = HEADER.unpack_from(
+                self.shm.buf, 0
+            )
+
+            if count >= capacity:
+                return False
+
+            offset = HEADER.size + write_pos * ORDER.size
+
+            ORDER.pack_into(
+                self.shm.buf,
+                offset,
+                order_id,
+                side_code,
+                price_ticks,
+                quantity
+            )
+
+            write_pos = (write_pos + 1) % capacity
+            count += 1
+
+            HEADER.pack_into(
+                self.shm.buf,
+                0,
+                write_pos,
+                read_pos,
+                count,
+                capacity
+            )
+
+            return True
 
     def pop(self):
-        if self.count == 0:  # If count is zero, there is nothing to read.
-            return None
-        offset = (
-            self.read_pos * ORDER.size
-        )  # Calculate the byte offset of the oldest unread order.
-        order = ORDER.unpack_from(
-            self.memory, offset
-        )  # Unpack the three numbers from mmap memory
-        self.read_pos = (
-            self.read_pos + 1
-        ) % self.capacity  # Move to the next slot; wrap to zero at the end.
-        self.count -= 1  # One order has been removed from the buffer.
-        return order  # Give the order details back to the caller.
+        with self.lock:
+            write_pos, read_pos, count, capacity = HEADER.unpack_from(
+                self.shm.buf, 0
+            )
+
+            if count == 0:
+                return None
+
+            offset = HEADER.size + read_pos * ORDER.size
+
+            order = ORDER.unpack_from(
+                self.shm.buf,
+                offset
+            )
+
+            read_pos = (read_pos + 1) % capacity
+            count -= 1
+
+            HEADER.pack_into(
+                self.shm.buf,
+                0,
+                write_pos,
+                read_pos,
+                count,
+                capacity
+            )
+
+            return order
+
+    def is_empty(self):
+        with self.lock:
+            _, _, count, _ = HEADER.unpack_from(
+                self.shm.buf, 0
+            )
+            return count == 0
 
 
 # --------------------------------------------------
-# STEP 3: Create process order functions
+# STEP 3: Producer Process
 # --------------------------------------------------
-async def producer(buffer):
-    async for order_id, side, price_ticks, quantity in generate_orders():
+
+async def producer(buffer, total_orders=10, delay=0.1):
+    sent = 0
+
+    async for order in generate_orders(
+        total_orders=total_orders,
+        delay=delay
+    ):
+        order_id, side, price_ticks, quantity = order
         side_code = 0 if side == "BUY" else 1
-        order = (order_id, side_code, price_ticks, quantity)
-        while not buffer.push(*order):
-            await asyncio.sleep(0.01)
 
-        print("Produced:", (order_id, side, price_ticks, quantity))
+        while not buffer.push(
+            order_id,
+            side_code,
+            price_ticks,
+            quantity
+        ):
+            await asyncio.sleep(0.001)
 
+        sent += 1
 
-async def consumer(buffer, producer_task):
-    engine = MatchingEngine()
-    while not producer_task.done() or buffer.count > 0:
-        order = buffer.pop()
-        if order is not None:
+        if sent % 1000 == 0:
+            print(f"[PRODUCER] Sent: {sent}")
+
+    print(f"[PRODUCER] Finished. Total sent: {sent}")
+def producer_process(
+    shm_name,
+    lock,
+    producer_done,
+    total_orders,
+    delay
+):
+    shm = shared_memory.SharedMemory(name=shm_name)
+
+    try:
+        buffer = RingBuffer(shm, lock)
+        asyncio.run(
+            producer(buffer, total_orders, delay)
+        )
+    finally:
+        producer_done.set()
+        shm.close()
+
+# --------------------------------------------------
+# STEP 4: Consumer Process
+# --------------------------------------------------
+
+def consumer_process(shm_name, lock, producer_done):
+
+    shm = shared_memory.SharedMemory(name=shm_name)
+
+    try:
+        buffer = RingBuffer(shm, lock)
+        engine = MatchingEngine()
+
+        consumed = 0
+
+        while not producer_done.is_set() or not buffer.is_empty():
+
+            order = buffer.pop()
+
+            if order is None:
+                time.sleep(0.001)
+                continue
+
             order_id, side_code, price_ticks, quantity = order
-            side = "BUY" if side_code == 0 else "SELL"
-            print("Consumed:", (order_id, side, price_ticks, quantity))
+
             if side_code == 0:
-                engine.add_buy_order(order_id, price_ticks, quantity)
+                engine.add_buy_order(
+                    order_id,
+                    price_ticks,
+                    quantity
+                )
             else:
-                engine.add_sell_order(order_id, price_ticks, quantity)
+                engine.add_sell_order(
+                    order_id,
+                    price_ticks,
+                    quantity
+                )
+
             engine.match_orders()
-        else:
-            await asyncio.sleep(0.01)
+            consumed += 1
 
-    print("Remaining buy orders:", engine.buy_orders)
-    print("Remaining sell orders:", engine.sell_orders)
+            if consumed % 1000 == 0:
+                print(f"[CONSUMER] Received: {consumed}")
+                
+            
+
+        print("\nConsumer finished.")
+        print("Total orders consumed:", consumed)
+        print("Remaining buy orders:", len(engine.buy_orders))
+        print("Remaining sell orders:", len(engine.sell_orders))
+
+    finally:
+        shm.close()
 
 
 # --------------------------------------------------
-# STEP 4: Run a small demonstration
+# STEP 5: Main Process
 # --------------------------------------------------
+
 def main():
-    capacity = 3
+    total_orders = 10000
+    generation_delay = 0
+    capacity = 1024
+
     memory_size = (
-        capacity * ORDER.size
-    )  # Reserve enough bytes for 'capacity' order records.
-    with tempfile.TemporaryFile() as file:  # Temporary file backs the memory map for this demo.
-        file.truncate(memory_size)
+        HEADER.size + capacity * ORDER.size
+    )
 
-        # Map the file into memory so struct can read/write its bytes.
-        with mmap.mmap(
-            file.fileno(),
-            length=memory_size,
-            access=mmap.ACCESS_WRITE,
-        ) as memory:
+    ctx = mp.get_context("spawn")
 
-            buffer = RingBuffer(memory, capacity)
+    lock = ctx.Lock()
+    producer_done = ctx.Event()
 
-            async def run_pipeline():
-                producer_task = asyncio.create_task(producer(buffer))
-                await consumer(buffer, producer_task)
-                await producer_task
+    shm = shared_memory.SharedMemory(
+        create=True,
+        size=memory_size
+    )
 
-            asyncio.run(run_pipeline())
+    try:
+        # Initialize shared-memory header
+        HEADER.pack_into(
+            shm.buf,
+            0,
+            0,          # write_pos
+            0,          # read_pos
+            0,          # count
+            capacity
+        )
+
+        consumer = ctx.Process(
+            target=consumer_process,
+            args=(shm.name, lock, producer_done)
+        )
+
+        producer = ctx.Process(
+            target=producer_process,
+            args=(shm.name, lock, producer_done,total_orders,generation_delay)
+        )
+
+        consumer.start()
+        producer.start()
+
+        producer.join()
+        consumer.join()
+
+        if producer.exitcode != 0:
+            raise RuntimeError("Producer process failed")
+
+        if consumer.exitcode != 0:
+            raise RuntimeError("Consumer process failed")
+
+        print("\nIPC pipeline completed successfully.")
+
+    finally:
+        shm.close()
+        shm.unlink()
 
 
 if __name__ == "__main__":
+    mp.freeze_support()
     main()
