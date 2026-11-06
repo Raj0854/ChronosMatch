@@ -120,6 +120,8 @@ def consumer_process(
     lock,
     producer_done,
     consumed_count,
+    accepted_count,
+    rejected_count,
     trade_count,
     traded_quantity,
     buy_remaining,
@@ -131,9 +133,11 @@ def consumer_process(
 
     try:
         buffer = RingBuffer(shm, lock)
-        engine = CythonMatchingEngine()
+        engine = CythonMatchingEngine(capacity=250000)
 
         consumed = 0
+        accepted = 0
+        rejected = 0
 
         while not producer_done.is_set() or not buffer.is_empty():
 
@@ -146,9 +150,18 @@ def consumer_process(
             order_id, side_code, price_ticks, quantity = order
 
             if side_code == 0:
-                engine.add_buy_order(order_id, price_ticks, quantity)
+                success = engine.add_buy_order(
+                    order_id, price_ticks, quantity
+                )
             else:
-                engine.add_sell_order(order_id, price_ticks, quantity)
+                success = engine.add_sell_order(
+                    order_id, price_ticks, quantity
+                )
+
+            if success:
+                accepted += 1
+            else:
+                rejected += 1
 
             engine.match_orders()
             consumed += 1
@@ -158,6 +171,11 @@ def consumer_process(
 
         print("\nConsumer finished.")
         print("Total orders consumed:", consumed)
+        print("Total orders accepted:", accepted)
+        print("Total orders rejected:", rejected)
+        consumed_count.value = consumed
+        accepted_count.value = accepted
+        rejected_count.value = rejected
         buy_orders, sell_orders = engine.get_order_books()
 
         print("Remaining buy orders:", len(buy_orders))
@@ -200,6 +218,8 @@ def run_pipeline(run_number, total_orders=50000):
 
     consumed_count = ctx.Value("i", 0)
     trade_count = ctx.Value("i", 0)
+    accepted_count = ctx.Value("i", 0)
+    rejected_count = ctx.Value("i", 0)
     traded_quantity = ctx.Value("q", 0)
     buy_remaining = ctx.Value("i", 0)
     sell_remaining = ctx.Value("i", 0)
@@ -216,6 +236,8 @@ def run_pipeline(run_number, total_orders=50000):
                 lock,
                 producer_done,
                 consumed_count,
+                accepted_count,
+                rejected_count,
                 trade_count,
                 traded_quantity,
                 buy_remaining,
@@ -251,6 +273,8 @@ def run_pipeline(run_number, total_orders=50000):
             "run": run_number,
             "time": elapsed_time,
             "received": received,
+            "accepted": accepted_count.value,
+            "rejected": rejected_count.value,
             "loss": total_orders - received,
             "throughput": received / elapsed_time,
             "trades": trade_count.value,
@@ -265,76 +289,161 @@ def run_pipeline(run_number, total_orders=50000):
         shm.unlink()
 
 
+
 def main():
-    total_orders = 50000
+    workload_sizes = [50000, 100000, 250000]
     warmup_runs = 1
-    measured_runs = 10
+    measured_runs = 5
 
-    print("========== IPC BENCHMARK ==========")
-    print("Orders per run:", total_orders)
-    print("Warm-up runs:", warmup_runs)
-    print("Measured runs:", measured_runs)
+    print("========== IPC CAPACITY SCALING BENCHMARK ==========")
 
-    print("\nRunning warm-up...")
+    for total_orders in workload_sizes:
+        print("\n" + "=" * 55)
+        print(f"WORKLOAD: {total_orders:,} ORDERS")
+        print("=" * 55)
 
-    for i in range(warmup_runs):
-        run_pipeline(f"WARMUP-{i + 1}", total_orders)
+        print(f"Warm-up runs: {warmup_runs}")
+        print(f"Measured runs: {measured_runs}")
 
-    results = []
+        # Warm-up
+        print("\nRunning warm-up...")
 
-    print("\nRunning measured benchmarks...")
+        for i in range(warmup_runs):
+            run_pipeline(f"WARMUP-{i + 1}", total_orders)
 
-    for i in range(1, measured_runs + 1):
-        result = run_pipeline(i, total_orders)
-        results.append(result)
+        # Measured runs
+        results = []
 
-        print(
-            f"Run {i:02d}/{measured_runs} | "
-            f"Time: {result['time']:.4f}s | "
-            f"Throughput: {result['throughput']:.2f} orders/sec"
+        print("\nRunning measured benchmarks...")
+
+        for i in range(1, measured_runs + 1):
+            result = run_pipeline(i, total_orders)
+            results.append(result)
+
+            print(
+                f"Run {i}/{measured_runs} | "
+                f"Time: {result['time']:.4f}s | "
+                f"Throughput: {result['throughput']:.2f} orders/sec"
+            )
+
+        # Performance calculations
+        times = [r["time"] for r in results]
+        throughputs = [r["throughput"] for r in results]
+
+        sorted_times = sorted(times)
+        p95_index = math.ceil(0.95 * len(sorted_times)) - 1
+        p95 = sorted_times[p95_index]
+
+        median_time = statistics.median(times)
+        median_throughput = statistics.median(throughputs)
+
+        # Correctness checks
+        all_received = all(
+            r["received"] == total_orders for r in results
         )
 
-    times = [r["time"] for r in results]
-    throughputs = [r["throughput"] for r in results]
+        no_loss = all(r["loss"] == 0 for r in results)
+        all_accepted = all(
+            r["accepted"] == total_orders for r in results
+        )
 
-    sorted_times = sorted(times)
-    p95_index = math.ceil(0.95 * len(sorted_times)) - 1
-    p95 = sorted_times[p95_index]
+        no_rejections = all(
+            r["rejected"] == 0 for r in results
+        )
 
-    print("\n========== FINAL IPC RESULTS ==========")
+        same_trades = len(set(r["trades"] for r in results)) == 1
 
-    print("Orders per run:", total_orders)
-    print("Median execution time:", f"{statistics.median(times):.4f} sec")
-    print("P95 execution time:", f"{p95:.4f} sec")
-    print("Median throughput:", f"{statistics.median(throughputs):.2f} orders/sec")
+        same_quantity = len(set(r["quantity"] for r in results)) == 1
 
-    print("\n========== CORRECTNESS ==========")
+        same_buy_remaining = len(
+            set(r["buy_remaining"] for r in results)
+        ) == 1
 
-    print("Orders received:", results[-1]["received"])
-    print("Order loss:", results[-1]["loss"])
-    print("Trades executed:", results[-1]["trades"])
-    print("Total traded quantity:", results[-1]["quantity"])
-    print("Remaining buy orders:", results[-1]["buy_remaining"])
-    print("Remaining sell orders:", results[-1]["sell_remaining"])
+        same_sell_remaining = len(
+            set(r["sell_remaining"] for r in results)
+        ) == 1
 
-    all_received = all(r["received"] == total_orders for r in results)
-    no_loss = all(r["loss"] == 0 for r in results)
+        same_output = len(
+            set(r["output_hash"] for r in results)
+        ) == 1
 
-    same_trades = len(set(r["trades"] for r in results)) == 1
-    same_quantity = len(set(r["quantity"] for r in results)) == 1
-    same_output = len(set(r["output_hash"] for r in results)) == 1
+        correctness_pass = all([
+            all_received,
+            no_loss,
+            all_accepted,
+            no_rejections,
+            same_trades,
+            same_quantity,
+            same_buy_remaining,
+            same_sell_remaining,
+            same_output,
+        ])
 
-    print("Trade count consistency:", "PASS" if same_trades else "FAIL")
-    print("Traded quantity consistency:", "PASS" if same_quantity else "FAIL")
-    print("Complete output hash consistency:", "PASS" if same_output else "FAIL")
-    if all_received and no_loss and same_trades and same_quantity and same_output:
-        print("\nRESULT: PASS")
-        print("All IPC runs completed with consistent results.")
-    else:
-        print("\nRESULT: FAIL")
-        print("IPC correctness or consistency check failed.")
+        # Results
+        print("\n---------- PERFORMANCE RESULTS ----------")
 
-    print("======================================")
+        print(f"Orders per run: {total_orders:,}")
+        print(f"Median execution time: {median_time:.4f} sec")
+        print(f"P95 execution time: {p95:.4f} sec")
+        print(f"Median throughput: {median_throughput:.2f} orders/sec")
+
+        # Final run details
+        last = results[-1]
+
+        print("\n---------- CORRECTNESS RESULTS ----------")
+
+        print(f"Orders received: {last['received']:,}")
+        print(f"Order loss: {last['loss']:,}")
+        print(f"Trades executed: {last['trades']:,}")
+        print(f"Total traded quantity: {last['quantity']:,}")
+        print(f"Remaining buy orders: {last['buy_remaining']:,}")
+        print(f"Remaining sell orders: {last['sell_remaining']:,}")
+
+        print(
+            "All orders received:",
+            "PASS" if all_received else "FAIL"
+        )
+
+        print(
+            "Zero order loss:",
+            "PASS" if no_loss else "FAIL"
+        )
+        print(
+            "All orders accepted:",
+            "PASS" if all_accepted else "FAIL"
+        )
+
+        print(
+            "Zero order rejection:",
+            "PASS" if no_rejections else "FAIL"
+        )
+
+        print(
+            "Trade count consistency:",
+            "PASS" if same_trades else "FAIL"
+        )
+
+        print(
+            "Traded quantity consistency:",
+            "PASS" if same_quantity else "FAIL"
+        )
+
+        print(
+            "Order book consistency:",
+            "PASS" if same_buy_remaining and same_sell_remaining else "FAIL"
+        )
+
+        print(
+            "Complete output hash consistency:",
+            "PASS" if same_output else "FAIL"
+        )
+
+        print(
+            "\nWORKLOAD RESULT:",
+            "PASS" if correctness_pass else "FAIL"
+        )
+
+    print("\n========== CAPACITY SCALING COMPLETE ==========")
 
 
 if __name__ == "__main__":
