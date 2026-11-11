@@ -16,3 +16,7 @@ order_struct.c
 # Virtual environments
 .venv/
 venv/
+# Runtime database files
+chronosmatch.db
+*.db-wal
+*.db-shm

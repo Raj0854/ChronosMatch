@@ -1,7 +1,7 @@
-import unittest
-import multiprocessing as mp
 
-from multiprocessing import shared_memory
+import unittest
+import struct
+from multiprocessing import shared_memory, Lock
 
 from main import RingBuffer, ORDER, HEADER
 
@@ -9,82 +9,61 @@ from main import RingBuffer, ORDER, HEADER
 class TestRingBuffer(unittest.TestCase):
 
     def setUp(self):
-        self.capacity = 3
-        self.ctx = mp.get_context("spawn")
-        self.lock = self.ctx.Lock()
-
-        memory_size = HEADER.size + self.capacity * ORDER.size
-
+        self.capacity = 4
         self.shm = shared_memory.SharedMemory(
             create=True,
-            size=memory_size
+            size=HEADER.size + self.capacity * ORDER.size
         )
-
-        HEADER.pack_into(
-            self.shm.buf,
-            0,
-            0,
-            0,
-            0,
-            self.capacity
-        )
-
-        self.buffer = RingBuffer(self.shm, self.lock)
+        HEADER.pack_into(self.shm.buf, 0, 0, 0, 0, self.capacity)
+        self.buffer = RingBuffer(self.shm, Lock())
 
     def tearDown(self):
         self.shm.close()
         self.shm.unlink()
 
     def test_push_and_pop(self):
-        self.assertTrue(
-            self.buffer.push(101, 0, 10000, 5)
-        )
-
-        self.assertEqual(
-            self.buffer.pop(),
-            (101, 0, 10000, 5)
-        )
-
-    def test_full_buffer(self):
-        self.assertTrue(self.buffer.push(101, 0, 10000, 5))
-        self.assertTrue(self.buffer.push(102, 1, 10025, 2))
-        self.assertTrue(self.buffer.push(103, 0, 9990, 7))
-
-        self.assertFalse(
-            self.buffer.push(104, 1, 10010, 1)
-        )
+        self.assertTrue(self.buffer.push((101, 0, 10000, 5)))
+        result = self.buffer.pop()
+        self.assertIsNotNone(result)
+        self.assertEqual(result[:4], (101, 0, 10000, 5))
 
     def test_empty_buffer(self):
         self.assertIsNone(self.buffer.pop())
 
-    def test_fifo_order(self):
-        self.buffer.push(101, 0, 10000, 5)
-        self.buffer.push(102, 1, 10025, 2)
-        self.buffer.push(103, 0, 9990, 7)
+    def test_full_buffer(self):
+        for i in range(self.capacity):
+            self.assertTrue(self.buffer.push((101 + i, 0, 10000, 5)))
 
-        self.assertEqual(self.buffer.pop()[0], 101)
-        self.assertEqual(self.buffer.pop()[0], 102)
-        self.assertEqual(self.buffer.pop()[0], 103)
+        self.assertFalse(self.buffer.push((200, 0, 10000, 5)))
+
+    def test_fifo_order(self):
+        orders = [
+            (101, 0, 10000, 5),
+            (102, 1, 10100, 3),
+            (103, 0, 9900, 2)
+        ]
+
+        for order in orders:
+            self.buffer.push(order)
+
+        for expected in orders:
+            result = self.buffer.pop()
+            self.assertEqual(result[:4], expected)
 
     def test_circular_wraparound(self):
-        self.buffer.push(101, 0, 10000, 5)
-        self.buffer.push(102, 1, 10025, 2)
-        self.buffer.push(103, 0, 9990, 7)
+        for i in range(self.capacity):
+            self.buffer.push((101 + i, 0, 10000, 5))
 
-        self.buffer.pop()
-        self.buffer.pop()
+        for _ in range(2):
+            self.buffer.pop()
 
-        self.assertTrue(
-            self.buffer.push(104, 1, 10010, 1)
-        )
+        self.assertTrue(self.buffer.push((200, 0, 10000, 5)))
+        self.assertTrue(self.buffer.push((201, 0, 10000, 5)))
 
-        self.assertTrue(
-            self.buffer.push(105, 0, 10050, 3)
-        )
-
-        self.assertEqual(self.buffer.pop()[0], 103)
-        self.assertEqual(self.buffer.pop()[0], 104)
-        self.assertEqual(self.buffer.pop()[0], 105)
+        self.assertEqual(self.buffer.pop()[:4], (103, 0, 10000, 5))
+        self.assertEqual(self.buffer.pop()[:4], (104, 0, 10000, 5))
+        self.assertEqual(self.buffer.pop()[:4], (200, 0, 10000, 5))
+        self.assertEqual(self.buffer.pop()[:4], (201, 0, 10000, 5))
 
 
 if __name__ == "__main__":
