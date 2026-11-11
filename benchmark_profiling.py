@@ -9,8 +9,7 @@ from cython_engine import CythonMatchingEngine
 WARMUP_RUNS = 3
 MEASURED_RUNS = 20
 
-
-# Generate the workload once so both modes use identical orders.
+# Generate identical workload for every run.
 ORDERS = generate_orders(TOTAL_ORDERS)
 
 
@@ -23,16 +22,25 @@ def run_once(profile_enabled):
         else:
             engine.add_sell_order(order_id, price, quantity)
 
-    start = time.perf_counter_ns()
+    start_ns = time.perf_counter_ns()
 
     if profile_enabled:
         engine.profile_stages()
     else:
         engine.match_orders()
 
-    elapsed_ns = time.perf_counter_ns() - start
+    elapsed_ns = time.perf_counter_ns() - start_ns
 
-    return elapsed_ns / 1_000_000, engine.get_trades(), engine.get_order_books()
+    # Internal Cython timer, active only in profiling mode.
+    internal_ns = (
+        engine.get_last_profile()[0]
+        if profile_enabled else 0
+    )
+
+    trades = engine.get_trades()
+    order_books = engine.get_order_books()
+
+    return elapsed_ns, internal_ns, trades, order_books
 
 
 def percentile(values, p):
@@ -41,7 +49,8 @@ def percentile(values, p):
     return ordered[index]
 
 
-# Warm up both modes.
+# Warm-up
+print("Running warm-up...")
 for _ in range(WARMUP_RUNS):
     run_once(False)
     run_once(True)
@@ -49,48 +58,70 @@ for _ in range(WARMUP_RUNS):
 
 normal_times = []
 profiled_times = []
+internal_times = []
+trade_counts = []
 correctness_pass = True
 
-# Alternate execution order to reduce order-related timing bias.
+print("Running measured benchmarks...")
+
 for run_index in range(MEASURED_RUNS):
     if run_index % 2 == 0:
-        normal_result = run_once(False)
-        profiled_result = run_once(True)
+        normal = run_once(False)
+        profiled = run_once(True)
     else:
-        profiled_result = run_once(True)
-        normal_result = run_once(False)
+        profiled = run_once(True)
+        normal = run_once(False)
 
-    normal_times.append(normal_result[0])
-    profiled_times.append(profiled_result[0])
+    normal_times.append(normal[0])
+    profiled_times.append(profiled[0])
+    internal_times.append(profiled[1])
+    trade_counts.append(len(profiled[2]))
 
-    if normal_result[1:] != profiled_result[1:]:
+    if normal[2:] != profiled[2:]:
         correctness_pass = False
 
+# Statistics in nanoseconds
+normal_median_ns = statistics.median(normal_times)
+profiled_median_ns = statistics.median(profiled_times)
+internal_median_ns = statistics.median(internal_times)
 
-normal_median = statistics.median(normal_times)
-profiled_median = statistics.median(profiled_times)
+normal_p95_ns = percentile(normal_times, 95)
+profiled_p95_ns = percentile(profiled_times, 95)
+internal_p95_ns = percentile(internal_times, 95)
 
-print(f"Orders per run: {TOTAL_ORDERS}")
-print(f"Warm-up runs per mode: {WARMUP_RUNS}")
-print(f"Measured runs per mode: {MEASURED_RUNS}")
+median_trade_count = statistics.median(trade_counts)
 
-print("\nNormal matching")
-print(f"Median: {normal_median:.3f} ms")
-print(f"P95:    {percentile(normal_times, 95):.3f} ms")
+print("\n========== NANOSECOND LATENCY REPORT ==========")
 
-print("\nProfiling-enabled matching")
-print(f"Median: {profiled_median:.3f} ms")
-print(f"P95:    {percentile(profiled_times, 95):.3f} ms")
+print(f"Orders per run: {TOTAL_ORDERS:,}")
+print(f"Trades per run (median): {median_trade_count:,.0f}")
+print(f"Warm-up runs: {WARMUP_RUNS}")
+print(f"Measured runs: {MEASURED_RUNS}")
 
-if normal_median > 0:
-    overhead_pct = (
-        (profiled_median - normal_median) / normal_median
+print("\nNORMAL MATCHING")
+print(f"Median: {normal_median_ns:,.0f} ns")
+print(f"P95:    {normal_p95_ns:,.0f} ns")
+
+print("\nPROFILING-ENABLED MATCHING")
+print(f"Median: {profiled_median_ns:,.0f} ns")
+print(f"P95:    {profiled_p95_ns:,.0f} ns")
+
+print("\nINTERNAL CYTHON MATCHING LOOP")
+print(f"Median: {internal_median_ns:,.0f} ns")
+print(f"P95:    {internal_p95_ns:,.0f} ns")
+
+if median_trade_count > 0:
+    average_ns = internal_median_ns / median_trade_count
+    print(f"Average matching time per trade: {average_ns:,.2f} ns")
+    print(f"Average matching time per trade: {average_ns / 1000:,.3f} µs")
+
+if normal_median_ns > 0:
+    overhead = (
+        (profiled_median_ns - normal_median_ns)
+        / normal_median_ns
     ) * 100
-    print(f"\nMeasured difference: {overhead_pct:+.2f}%")
+    print(f"\nProfiling measurement difference: {overhead:+.2f}%")
 
-print(
-    "\nCorrectness:",
-    "PASS — identical trades and remaining order books."
-    if correctness_pass
-    else "FAIL — outputs differ!"
-)
+print("\nCORRECTNESS:", "PASS" if correctness_pass else "FAIL")
+
+print("===============================================")

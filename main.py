@@ -1,451 +1,1175 @@
+
 import asyncio
-import time
-import struct
-import multiprocessing as mp
-import random
-import statistics
-import math
 import hashlib
+import multiprocessing as mp
+import os
+import random
+import sqlite3
+import statistics
+import struct
+import sys
+import time
+
 from multiprocessing import shared_memory
+
 from market_simulator import generate_orders
 from cython_engine import CythonMatchingEngine
+from latency_dashboard import run_dashboard
 
-# --------------------------------------------------
-# STEP 1: Binary memory layouts
-# --------------------------------------------------
 
-# order_id, side_code, price_ticks, quantity
-ORDER = struct.Struct("<IIII")
+# ============================================================
+# CONFIGURATION
+# ============================================================
 
-# write_pos, read_pos, count, capacity
+# Includes producer timestamp.
+ORDER = struct.Struct("<IIIIQ")
 HEADER = struct.Struct("<IIII")
 
+RING_BUFFER_CAPACITY = 1024
 
-# --------------------------------------------------
-# STEP 2: Shared Memory Ring Buffer
-# --------------------------------------------------
+WARMUP_RUNS = 1
+MEASURED_RUNS = 5
 
+WORKLOADS = [50_000, 100_000, 250_000]
+
+DB_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "chronosmatch.db"
+)
+
+
+# Dashboard shared metrics:
+# 0  = orders received
+# 1  = orders processed
+# 2  = trades executed
+# 3  = total traded quantity
+# 4  = remaining buy orders
+# 5  = remaining sell orders
+# 6  = best bid price
+# 7  = best bid quantity
+# 8  = best ask price
+# 9  = best ask quantity
+# 10 = total IPC latency ns
+# 11 = maximum IPC latency ns
+# 12 = pipeline start timestamp ns
+
+
+# ============================================================
+# SHARED MEMORY RING BUFFER
+# ============================================================
 
 class RingBuffer:
+
     def __init__(self, shm, lock):
+
         self.shm = shm
         self.lock = lock
 
-    def push(self, order_id, side_code, price_ticks, quantity):
+        self.capacity = HEADER.unpack(
+            self.shm.buf[:HEADER.size]
+        )[3]
+
+    def push(self, order):
+
+        order_id, side, price, quantity = order
+
+        side_code = 0 if side == "BUY" else 1
+
         with self.lock:
-            write_pos, read_pos, count, capacity = HEADER.unpack_from(self.shm.buf, 0)
+
+            write_pos, read_pos, count, capacity = HEADER.unpack(
+                self.shm.buf[:HEADER.size]
+            )
 
             if count >= capacity:
                 return False
 
+            # Timestamp is captured when the order enters the buffer.
+            timestamp_ns = time.perf_counter_ns()
+
             offset = HEADER.size + write_pos * ORDER.size
 
             ORDER.pack_into(
-                self.shm.buf, offset, order_id, side_code, price_ticks, quantity
+                self.shm.buf,
+                offset,
+                order_id,
+                side_code,
+                price,
+                quantity,
+                timestamp_ns
             )
 
             write_pos = (write_pos + 1) % capacity
             count += 1
 
-            HEADER.pack_into(self.shm.buf, 0, write_pos, read_pos, count, capacity)
+            HEADER.pack_into(
+                self.shm.buf,
+                0,
+                write_pos,
+                read_pos,
+                count,
+                capacity
+            )
 
             return True
 
     def pop(self):
+
         with self.lock:
-            write_pos, read_pos, count, capacity = HEADER.unpack_from(self.shm.buf, 0)
+
+            write_pos, read_pos, count, capacity = HEADER.unpack(
+                self.shm.buf[:HEADER.size]
+            )
 
             if count == 0:
                 return None
 
             offset = HEADER.size + read_pos * ORDER.size
 
-            order = ORDER.unpack_from(self.shm.buf, offset)
+            (
+                order_id,
+                side_code,
+                price,
+                quantity,
+                timestamp_ns
+            ) = ORDER.unpack_from(
+                self.shm.buf,
+                offset
+            )
 
             read_pos = (read_pos + 1) % capacity
             count -= 1
 
-            HEADER.pack_into(self.shm.buf, 0, write_pos, read_pos, count, capacity)
+            HEADER.pack_into(
+                self.shm.buf,
+                0,
+                write_pos,
+                read_pos,
+                count,
+                capacity
+            )
 
-            return order
+            side = "BUY" if side_code == 0 else "SELL"
+
+            return (
+                order_id,
+                side,
+                price,
+                quantity,
+                timestamp_ns
+            )
 
     def is_empty(self):
+
         with self.lock:
-            _, _, count, _ = HEADER.unpack_from(self.shm.buf, 0)
+
+            _, _, count, _ = HEADER.unpack(
+                self.shm.buf[:HEADER.size]
+            )
+
             return count == 0
 
 
-# --------------------------------------------------
-# STEP 3: Producer Process
-# --------------------------------------------------
+# ============================================================
+# ASYNC PRODUCER
+# ============================================================
+
+async def producer(
+    buffer,
+    total_orders=10,
+    delay=0
+):
+
+    async for order in generate_orders(
+        total_orders=total_orders,
+        delay=delay
+    ):
+
+        while not buffer.push(order):
+            await asyncio.sleep(0.0001)
 
 
-async def producer(buffer, total_orders=10, delay=0.1):
-    sent = 0
-
-    async for order in generate_orders(total_orders=total_orders, delay=delay):
-        order_id, side, price_ticks, quantity = order
-        side_code = 0 if side == "BUY" else 1
-
-        while not buffer.push(order_id, side_code, price_ticks, quantity):
-            await asyncio.sleep(0.001)
-
-        sent += 1
-
-        if sent % 1000 == 0:
-            print(f"[PRODUCER] Sent: {sent}")
-
-    print(f"[PRODUCER] Finished. Total sent: {sent}")
-
-
-def producer_process(shm_name, lock, producer_done, total_orders, delay):
-    shm = shared_memory.SharedMemory(name=shm_name)
-
-    try:
-        buffer = RingBuffer(shm, lock)
-        random.seed(42)
-        asyncio.run(producer(buffer, total_orders, delay))
-    finally:
-        producer_done.set()
-        shm.close()
-
-
-# --------------------------------------------------
-# STEP 4: Consumer Process
-# --------------------------------------------------
-
-
-def consumer_process(
+def producer_process(
     shm_name,
     lock,
     producer_done,
-    consumed_count,
-    accepted_count,
-    rejected_count,
-    trade_count,
-    traded_quantity,
-    buy_remaining,
-    sell_remaining,
-    output_digest,
+    total_orders,
+    generation_delay
 ):
 
     shm = shared_memory.SharedMemory(name=shm_name)
 
     try:
-        buffer = RingBuffer(shm, lock)
-        engine = CythonMatchingEngine(capacity=250000)
 
-        consumed = 0
+        buffer = RingBuffer(shm, lock)
+
+        random.seed(42)
+
+        asyncio.run(
+            producer(
+                buffer,
+                total_orders,
+                generation_delay
+            )
+        )
+
+    finally:
+
+        producer_done.value = True
+        shm.close()
+
+
+# ============================================================
+# SQLITE DATABASE WRITER
+# ============================================================
+
+def database_writer_process(
+    db_path,
+    trade_queue,
+    saved_count
+):
+
+    connection = sqlite3.connect(db_path)
+
+    try:
+
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS trades (
+
+                trade_id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+                run_id TEXT NOT NULL,
+
+                buy_order_id INTEGER NOT NULL,
+
+                sell_order_id INTEGER NOT NULL,
+
+                price INTEGER NOT NULL,
+
+                quantity INTEGER NOT NULL,
+
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trades_run_id
+            ON trades(run_id)
+        """)
+
+        connection.commit()
+
+        total_saved = 0
+
+        while True:
+
+            item = trade_queue.get()
+
+            if item is None:
+                break
+
+            run_id, batch = item
+
+            if not batch:
+                continue
+
+            rows = [
+                (
+                    run_id,
+                    buy_order_id,
+                    sell_order_id,
+                    price,
+                    quantity
+                )
+                for (
+                    buy_order_id,
+                    sell_order_id,
+                    price,
+                    quantity
+                ) in batch
+            ]
+
+            cursor.executemany(
+                """
+                INSERT INTO trades (
+                    run_id,
+                    buy_order_id,
+                    sell_order_id,
+                    price,
+                    quantity
+                )
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                rows
+            )
+
+            connection.commit()
+
+            total_saved += len(rows)
+
+        saved_count.value = total_saved
+
+    finally:
+
+        connection.close()
+
+
+# ============================================================
+# UPDATE DASHBOARD METRICS
+# ============================================================
+
+def update_dashboard_stats(
+    stats,
+    received,
+    trades,
+    traded_quantity,
+    order_books,
+    total_latency_ns,
+    max_latency_ns
+):
+
+    buy_book, sell_book = order_books
+
+    with stats.get_lock():
+
+        stats[0] = received
+        stats[1] = received
+
+        stats[2] = trades
+        stats[3] = traded_quantity
+
+        stats[4] = len(buy_book)
+        stats[5] = len(sell_book)
+
+        if buy_book:
+
+            stats[6] = buy_book[0][1]
+            stats[7] = buy_book[0][2]
+
+        else:
+
+            stats[6] = 0
+            stats[7] = 0
+
+        if sell_book:
+
+            stats[8] = sell_book[0][1]
+            stats[9] = sell_book[0][2]
+
+        else:
+
+            stats[8] = 0
+            stats[9] = 0
+
+        stats[10] = total_latency_ns
+        stats[11] = max_latency_ns
+
+
+# ============================================================
+# CONSUMER PROCESS
+# ============================================================
+
+def consumer_process(
+    shm_name,
+    lock,
+    producer_done,
+    total_orders,
+    engine_capacity,
+    trade_queue,
+    run_id,
+    result_queue,
+    dashboard_stats
+):
+
+    shm = shared_memory.SharedMemory(name=shm_name)
+
+    try:
+
+        buffer = RingBuffer(shm, lock)
+
+        engine = CythonMatchingEngine(
+            capacity=engine_capacity
+        )
+
+        received = 0
         accepted = 0
         rejected = 0
 
-        while not producer_done.is_set() or not buffer.is_empty():
+        queued_trade_count = 0
+
+        total_latency_ns = 0
+        max_latency_ns = 0
+
+        last_dashboard_update = 0
+
+        while not producer_done.value or not buffer.is_empty():
 
             order = buffer.pop()
 
             if order is None:
-                time.sleep(0.001)
+
+                time.sleep(0.00001)
                 continue
 
-            order_id, side_code, price_ticks, quantity = order
+            (
+                order_id,
+                side,
+                price,
+                quantity,
+                timestamp_ns
+            ) = order
 
-            if side_code == 0:
-                success = engine.add_buy_order(
-                    order_id, price_ticks, quantity
-                )
-            else:
-                success = engine.add_sell_order(
-                    order_id, price_ticks, quantity
-                )
+            received += 1
 
-            if success:
+            # Actual IPC latency measurement.
+            latency_ns = max(
+                0,
+                time.perf_counter_ns() - timestamp_ns
+            )
+
+            total_latency_ns += latency_ns
+
+            max_latency_ns = max(
+                max_latency_ns,
+                latency_ns
+            )
+
+            try:
+
+                if side == "BUY":
+
+                    engine.add_buy_order(
+                        order_id,
+                        price,
+                        quantity
+                    )
+
+                else:
+
+                    engine.add_sell_order(
+                        order_id,
+                        price,
+                        quantity
+                    )
+
                 accepted += 1
-            else:
+
+                engine.match_orders()
+
+            except Exception as error:
+
                 rejected += 1
 
-            engine.match_orders()
-            consumed += 1
+                print(
+                    f"[CONSUMER] Order rejected: {order_id} | {error}"
+                )
 
-            if consumed % 1000 == 0:
-                print(f"[CONSUMER] Received: {consumed}")
+            # Send newly generated trades every 1000 orders.
+            if received % 1000 == 0:
 
-        print("\nConsumer finished.")
-        print("Total orders consumed:", consumed)
-        print("Total orders accepted:", accepted)
-        print("Total orders rejected:", rejected)
-        consumed_count.value = consumed
-        accepted_count.value = accepted
-        rejected_count.value = rejected
-        buy_orders, sell_orders = engine.get_order_books()
+                current_trades = engine.get_trades()
 
-        print("Remaining buy orders:", len(buy_orders))
-        print("Remaining sell orders:", len(sell_orders))
+                new_trades = current_trades[
+                    queued_trade_count:
+                ]
+
+                if new_trades:
+
+                    trade_queue.put(
+                        (run_id, new_trades)
+                    )
+
+                    queued_trade_count = len(current_trades)
+
+                # Update live dashboard.
+                order_books = engine.get_order_books()
+
+                total_quantity = sum(
+                    trade[3] for trade in current_trades
+                )
+
+                update_dashboard_stats(
+                    dashboard_stats,
+                    received,
+                    len(current_trades),
+                    total_quantity,
+                    order_books,
+                    total_latency_ns,
+                    max_latency_ns
+                )
+
+                last_dashboard_update = received
+
+        # Final matching results.
         trades = engine.get_trades()
-        # Generate SHA-256 digest of complete matching results
-        final_output = repr((trades, buy_orders, sell_orders)).encode("utf-8")
 
-        digest = hashlib.sha256(final_output).digest()
+        order_books = engine.get_order_books()
 
-        # Store 32-byte digest in shared memory
-        output_digest[:] = digest
-        print("Total trades executed:", len(trades))
-        print("Total traded quantity:", sum(t[3] for t in trades))
-        consumed_count.value = consumed
-        trade_count.value = len(trades)
-        traded_quantity.value = sum(t[3] for t in trades)
-        buy_remaining.value = len(buy_orders)
-        sell_remaining.value = len(sell_orders)
+        # Send remaining trades to SQLite.
+        remaining_trades = trades[queued_trade_count:]
+
+        if remaining_trades:
+
+            trade_queue.put(
+                (run_id, remaining_trades)
+            )
+
+        total_traded_quantity = sum(
+            trade[3] for trade in trades
+        )
+
+        remaining_buy_orders = len(order_books[0])
+        remaining_sell_orders = len(order_books[1])
+
+        # Final dashboard update.
+        update_dashboard_stats(
+            dashboard_stats,
+            received,
+            len(trades),
+            total_traded_quantity,
+            order_books,
+            total_latency_ns,
+            max_latency_ns
+        )
+
+        # Hash complete matching output.
+        output_data = repr(
+            (trades, order_books)
+        ).encode("utf-8")
+
+        output_hash = hashlib.sha256(
+            output_data
+        ).hexdigest()
+
+        # Send summary only to avoid large queue transfers.
+        result = {
+
+            "received": received,
+
+            "accepted": accepted,
+
+            "rejected": rejected,
+
+            "trade_count": len(trades),
+
+            "total_traded_quantity": total_traded_quantity,
+
+            "remaining_buy_orders": remaining_buy_orders,
+
+            "remaining_sell_orders": remaining_sell_orders,
+
+            "output_hash": output_hash
+        }
+
+        result_queue.put(result)
+
+        print("\n========== CONSUMER RESULTS ==========")
+
+        print("Orders received:", received)
+        print("Orders accepted:", accepted)
+        print("Orders rejected:", rejected)
+
+        print("Trades executed:", len(trades))
+
+        print(
+            "Total traded quantity:",
+            total_traded_quantity
+        )
+
+        print(
+            "Remaining buy orders:",
+            remaining_buy_orders
+        )
+
+        print(
+            "Remaining sell orders:",
+            remaining_sell_orders
+        )
+
+        print("======================================\n")
 
     finally:
+
         shm.close()
 
 
-# --------------------------------------------------
-# STEP 5: Main Process
-# --------------------------------------------------
+# ============================================================
+# SINGLE PIPELINE EXECUTION
+# ============================================================
 
+def run_pipeline(
+    run_number,
+    total_orders=50000,
+    show_dashboard=False
+):
 
-def run_pipeline(run_number, total_orders=50000):
-    generation_delay = 0
-    capacity = 1024
-
-    memory_size = HEADER.size + capacity * ORDER.size
+    print("\n========================================")
+    print(f"Starting Run: {run_number}")
+    print(f"Total Orders: {total_orders:,}")
+    print("========================================")
 
     ctx = mp.get_context("spawn")
 
-    lock = ctx.Lock()
-    producer_done = ctx.Event()
+    capacity = RING_BUFFER_CAPACITY
 
-    consumed_count = ctx.Value("i", 0)
-    trade_count = ctx.Value("i", 0)
-    accepted_count = ctx.Value("i", 0)
-    rejected_count = ctx.Value("i", 0)
-    traded_quantity = ctx.Value("q", 0)
-    buy_remaining = ctx.Value("i", 0)
-    sell_remaining = ctx.Value("i", 0)
-    output_digest = ctx.Array("B", 32)
-    shm = shared_memory.SharedMemory(create=True, size=memory_size)
+    engine_capacity = total_orders
+
+    generation_delay = 0
+
+    run_id = f"{run_number}-{time.time_ns()}"
+
+    db_path = DB_PATH
+
+    shm_size = HEADER.size + capacity * ORDER.size
+
+    shm = shared_memory.SharedMemory(
+        create=True,
+        size=shm_size
+    )
+
+    HEADER.pack_into(
+        shm.buf,
+        0,
+        0,
+        0,
+        0,
+        capacity
+    )
+
+    lock = ctx.Lock()
+
+    producer_done = ctx.Value("b", False)
+
+    trade_queue = ctx.Queue()
+
+    result_queue = ctx.Queue()
+
+    saved_count = ctx.Value("i", 0)
+
+    dashboard_stats = ctx.Array(
+        "q",
+        13,
+        lock=True
+    )
+
+    dashboard_stop = ctx.Event()
+
+    dashboard_stats[12] = time.perf_counter_ns()
+
+    writer = ctx.Process(
+        target=database_writer_process,
+        args=(
+            db_path,
+            trade_queue,
+            saved_count
+        )
+    )
+
+    consumer = ctx.Process(
+        target=consumer_process,
+        args=(
+            shm.name,
+            lock,
+            producer_done,
+            total_orders,
+            engine_capacity,
+            trade_queue,
+            run_id,
+            result_queue,
+            dashboard_stats
+        )
+    )
+
+    producer_instance = ctx.Process(
+        target=producer_process,
+        args=(
+            shm.name,
+            lock,
+            producer_done,
+            total_orders,
+            generation_delay
+        )
+    )
+
+    dashboard_process = None
+
+    start_time = time.perf_counter()
 
     try:
-        HEADER.pack_into(shm.buf, 0, 0, 0, 0, capacity)
 
-        consumer = ctx.Process(
-            target=consumer_process,
-            args=(
-                shm.name,
-                lock,
-                producer_done,
-                consumed_count,
-                accepted_count,
-                rejected_count,
-                trade_count,
-                traded_quantity,
-                buy_remaining,
-                sell_remaining,
-                output_digest,
-            ),
-        )
-
-        producer = ctx.Process(
-            target=producer_process,
-            args=(shm.name, lock, producer_done, total_orders, generation_delay),
-        )
-
-        start_time = time.perf_counter()
+        writer.start()
 
         consumer.start()
-        producer.start()
 
-        producer.join()
+        producer_instance.start()
+
+        if show_dashboard:
+
+            dashboard_process = ctx.Process(
+                target=run_dashboard,
+                args=(
+                    dashboard_stats,
+                    dashboard_stop
+                )
+            )
+
+            dashboard_process.start()
+
+        producer_instance.join()
+
         consumer.join()
 
-        elapsed_time = time.perf_counter() - start_time
+        if producer_instance.exitcode != 0:
 
-        if producer.exitcode != 0:
-            raise RuntimeError("Producer process failed")
+            raise RuntimeError(
+                "Producer process failed."
+            )
 
         if consumer.exitcode != 0:
-            raise RuntimeError("Consumer process failed")
 
-        received = consumed_count.value
+            raise RuntimeError(
+                "Consumer process failed."
+            )
 
-        return {
-            "run": run_number,
-            "time": elapsed_time,
-            "received": received,
-            "accepted": accepted_count.value,
-            "rejected": rejected_count.value,
-            "loss": total_orders - received,
-            "throughput": received / elapsed_time,
-            "trades": trade_count.value,
-            "quantity": traded_quantity.value,
-            "buy_remaining": buy_remaining.value,
-            "sell_remaining": sell_remaining.value,
-            "output_hash": bytes(output_digest[:]).hex(),
-        }
+        # Stop dashboard after processing is complete.
+        if dashboard_process:
+
+            dashboard_stop.set()
+
+            dashboard_process.join(timeout=3)
+
+            if dashboard_process.is_alive():
+
+                dashboard_process.terminate()
+                dashboard_process.join()
+
+        # Stop SQLite writer after all trade batches are queued.
+        trade_queue.put(None)
+
+        writer.join()
+
+        if writer.exitcode != 0:
+
+            raise RuntimeError(
+                "SQLite writer process failed."
+            )
+
+        elapsed = time.perf_counter() - start_time
+
+        result = result_queue.get(timeout=10)
+
+        # Verify SQLite records for this run.
+        connection = sqlite3.connect(db_path)
+
+        try:
+
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                SELECT
+                    COUNT(*),
+                    COALESCE(SUM(quantity), 0)
+                FROM trades
+                WHERE run_id = ?
+                """,
+                (run_id,)
+            )
+
+            database_count, database_quantity = cursor.fetchone()
+
+        finally:
+
+            connection.close()
+
+        throughput = (
+            total_orders / elapsed
+            if elapsed > 0
+            else 0
+        )
+
+        order_loss = (
+            total_orders - result["received"]
+        )
+
+        result.update({
+
+            "run_id": run_id,
+
+            "execution_time": elapsed,
+
+            "throughput": throughput,
+
+            "order_loss": order_loss,
+
+            "saved_trades": database_count,
+
+            "database_quantity": database_quantity
+
+        })
+
+        # Actual latency summary.
+        with dashboard_stats.get_lock():
+
+            total_latency = dashboard_stats[10]
+            maximum_latency = dashboard_stats[11]
+
+        average_latency_us = (
+            total_latency / result["received"] / 1000
+            if result["received"]
+            else 0
+        )
+
+        maximum_latency_us = maximum_latency / 1000
+
+        result["average_latency_us"] = average_latency_us
+        result["maximum_latency_us"] = maximum_latency_us
+
+        print("\n========== PIPELINE RESULT ==========")
+
+        print("Orders sent:", total_orders)
+        print("Orders received:", result["received"])
+        print("Order loss:", order_loss)
+
+        print("Trades executed:", result["trade_count"])
+
+        print("Trades saved to SQLite:", database_count)
+
+        print(
+            "Total traded quantity:",
+            result["total_traded_quantity"]
+        )
+
+        print(f"Execution time: {elapsed:.4f} seconds")
+
+        print(f"Throughput: {throughput:,.2f} orders/sec")
+
+        print(
+            f"Average IPC latency: {average_latency_us:.2f} us"
+        )
+
+        print(
+            f"Maximum IPC latency: {maximum_latency_us:.2f} us"
+        )
+
+        print("=====================================\n")
+
+        return result
 
     finally:
+
+        dashboard_stop.set()
+
+        # Cleanup remaining processes.
+        for process in (
+            producer_instance,
+            consumer,
+            writer,
+            dashboard_process
+        ):
+
+            if process is not None and process.is_alive():
+
+                process.terminate()
+                process.join()
+
         shm.close()
         shm.unlink()
 
+        trade_queue.close()
+        result_queue.close()
 
+        trade_queue.join_thread()
+        result_queue.join_thread()
+
+
+# ============================================================
+# CORRECTNESS VALIDATION
+# ============================================================
+
+def validate_results(
+    results,
+    total_orders
+):
+
+    result = results[-1]
+
+    same_trade_count = all(
+        item["trade_count"] == result["trade_count"]
+        for item in results
+    )
+
+    same_quantity = all(
+        item["total_traded_quantity"]
+        == result["total_traded_quantity"]
+        for item in results
+    )
+
+    same_order_books = all(
+        item["output_hash"] == result["output_hash"]
+        for item in results
+    )
+
+    same_hash = all(
+        item["output_hash"] == result["output_hash"]
+        for item in results
+    )
+
+    all_received = all(
+        item["received"] == total_orders
+        for item in results
+    )
+
+    zero_loss = all(
+        item["order_loss"] == 0
+        for item in results
+    )
+
+    all_accepted = all(
+        item["accepted"] == total_orders
+        for item in results
+    )
+
+    zero_rejection = all(
+        item["rejected"] == 0
+        for item in results
+    )
+
+    trade_consistency = all(
+        item["trade_count"] == item["saved_trades"]
+        for item in results
+    )
+
+    quantity_consistency = all(
+        item["total_traded_quantity"]
+        == item["database_quantity"]
+        for item in results
+    )
+
+    print("\n========== CORRECTNESS RESULTS ==========")
+
+    print("Orders received:", result["received"])
+    print("Order loss:", result["order_loss"])
+
+    print("Trades executed:", result["trade_count"])
+
+    print("Trades saved to SQLite:", result["saved_trades"])
+
+    print(
+        "Total traded quantity:",
+        result["total_traded_quantity"]
+    )
+
+    print(
+        "Remaining buy orders:",
+        result["remaining_buy_orders"]
+    )
+
+    print(
+        "Remaining sell orders:",
+        result["remaining_sell_orders"]
+    )
+
+    checks = {
+
+        "All orders received": all_received,
+
+        "Zero order loss": zero_loss,
+
+        "All orders accepted": all_accepted,
+
+        "Zero order rejection": zero_rejection,
+
+        "Trade count consistency": trade_consistency,
+
+        "SQLite persistence": trade_consistency,
+
+        "Traded quantity consistency": quantity_consistency,
+
+        "Order book consistency": same_order_books,
+
+        "Complete output hash consistency": same_hash,
+
+        "Trade consistency across runs": same_trade_count,
+
+        "Quantity consistency across runs": same_quantity
+    }
+
+    for name, passed in checks.items():
+
+        print(
+            f"{name}: {'PASS' if passed else 'FAIL'}"
+        )
+
+    workload_passed = all(checks.values())
+
+    print(
+        "\nWORKLOAD RESULT:",
+        "PASS" if workload_passed else "FAIL"
+    )
+
+    print("========================================")
+
+    return workload_passed
+
+
+# ============================================================
+# BENCHMARK
+# ============================================================
+
+def benchmark_workload(total_orders):
+
+    print("\n\n")
+    print("#" * 55)
+
+    print(f"BENCHMARK: {total_orders:,} ORDERS")
+
+    print("#" * 55)
+
+    print(f"Warm-up runs: {WARMUP_RUNS}")
+    print(f"Measured runs: {MEASURED_RUNS}")
+
+    print("\nRunning warm-up...")
+
+    for index in range(WARMUP_RUNS):
+
+        run_pipeline(
+            f"{total_orders}-WARMUP-{index + 1}",
+            total_orders
+        )
+
+    results = []
+
+    print("\nRunning measured benchmarks...")
+
+    for index in range(MEASURED_RUNS):
+
+        result = run_pipeline(
+            f"{total_orders}-RUN-{index + 1}",
+            total_orders
+        )
+
+        results.append(result)
+
+    execution_times = [
+        item["execution_time"]
+        for item in results
+    ]
+
+    throughput_values = [
+        item["throughput"]
+        for item in results
+    ]
+
+    print("\n========== BENCHMARK SUMMARY ==========")
+
+    print("Orders:", f"{total_orders:,}")
+
+    print(
+        f"Median execution time: "
+        f"{statistics.median(execution_times):.4f} seconds"
+    )
+
+    print(
+        f"Average execution time: "
+        f"{statistics.mean(execution_times):.4f} seconds"
+    )
+
+    print(
+        f"Median throughput: "
+        f"{statistics.median(throughput_values):,.2f} orders/sec"
+    )
+
+    print("=======================================\n")
+
+    return validate_results(
+        results,
+        total_orders
+    )
+
+
+# ============================================================
+# MAIN
+# ============================================================
 
 def main():
-    workload_sizes = [50000, 100000, 250000]
-    warmup_runs = 1
-    measured_runs = 5
 
-    print("========== IPC CAPACITY SCALING BENCHMARK ==========")
+    print("\n==========================================")
 
-    for total_orders in workload_sizes:
-        print("\n" + "=" * 55)
-        print(f"WORKLOAD: {total_orders:,} ORDERS")
-        print("=" * 55)
+    print("CHRONOSMATCH - HIGH FREQUENCY TRADING ENGINE")
 
-        print(f"Warm-up runs: {warmup_runs}")
-        print(f"Measured runs: {measured_runs}")
+    print("==========================================")
 
-        # Warm-up
-        print("\nRunning warm-up...")
+    print("\nPermanent SQLite database:")
+    print(DB_PATH)
 
-        for i in range(warmup_runs):
-            run_pipeline(f"WARMUP-{i + 1}", total_orders)
+    # Dashboard mode.
+    if "--dashboard" in sys.argv:
 
-        # Measured runs
-        results = []
+        print("\nStarting live dashboard mode...")
 
-        print("\nRunning measured benchmarks...")
+        result = run_pipeline(
+            "LIVE-DASHBOARD",
+            total_orders=50_000,
+            show_dashboard=True
+        )
 
-        for i in range(1, measured_runs + 1):
-            result = run_pipeline(i, total_orders)
-            results.append(result)
+        if (
+            result["received"] != 50_000
+            or result["order_loss"] != 0
+            or result["trade_count"] != result["saved_trades"]
+        ):
 
-            print(
-                f"Run {i}/{measured_runs} | "
-                f"Time: {result['time']:.4f}s | "
-                f"Throughput: {result['throughput']:.2f} orders/sec"
+            raise SystemExit(
+                "Dashboard pipeline validation failed."
             )
 
-        # Performance calculations
-        times = [r["time"] for r in results]
-        throughputs = [r["throughput"] for r in results]
+        print("\nLIVE DASHBOARD RUN: PASS")
 
-        sorted_times = sorted(times)
-        p95_index = math.ceil(0.95 * len(sorted_times)) - 1
-        p95 = sorted_times[p95_index]
+        return
 
-        median_time = statistics.median(times)
-        median_throughput = statistics.median(throughputs)
+    # Normal benchmark mode.
+    overall_passed = True
 
-        # Correctness checks
-        all_received = all(
-            r["received"] == total_orders for r in results
-        )
+    for total_orders in WORKLOADS:
 
-        no_loss = all(r["loss"] == 0 for r in results)
-        all_accepted = all(
-            r["accepted"] == total_orders for r in results
-        )
+        passed = benchmark_workload(total_orders)
 
-        no_rejections = all(
-            r["rejected"] == 0 for r in results
-        )
+        if not passed:
 
-        same_trades = len(set(r["trades"] for r in results)) == 1
+            overall_passed = False
 
-        same_quantity = len(set(r["quantity"] for r in results)) == 1
+            print(
+                f"\nBenchmark failed for {total_orders:,} orders."
+            )
 
-        same_buy_remaining = len(
-            set(r["buy_remaining"] for r in results)
-        ) == 1
+            break
 
-        same_sell_remaining = len(
-            set(r["sell_remaining"] for r in results)
-        ) == 1
+    print("\n========== FINAL RESULT ==========")
 
-        same_output = len(
-            set(r["output_hash"] for r in results)
-        ) == 1
+    if overall_passed:
 
-        correctness_pass = all([
-            all_received,
-            no_loss,
-            all_accepted,
-            no_rejections,
-            same_trades,
-            same_quantity,
-            same_buy_remaining,
-            same_sell_remaining,
-            same_output,
-        ])
+        print("ALL BENCHMARKS PASSED")
 
-        # Results
-        print("\n---------- PERFORMANCE RESULTS ----------")
+        print("SQLite database retained successfully.")
 
-        print(f"Orders per run: {total_orders:,}")
-        print(f"Median execution time: {median_time:.4f} sec")
-        print(f"P95 execution time: {p95:.4f} sec")
-        print(f"Median throughput: {median_throughput:.2f} orders/sec")
+    else:
 
-        # Final run details
-        last = results[-1]
+        print("BENCHMARK FAILED")
 
-        print("\n---------- CORRECTNESS RESULTS ----------")
+    print("Database:", DB_PATH)
 
-        print(f"Orders received: {last['received']:,}")
-        print(f"Order loss: {last['loss']:,}")
-        print(f"Trades executed: {last['trades']:,}")
-        print(f"Total traded quantity: {last['quantity']:,}")
-        print(f"Remaining buy orders: {last['buy_remaining']:,}")
-        print(f"Remaining sell orders: {last['sell_remaining']:,}")
+    print("==================================")
 
-        print(
-            "All orders received:",
-            "PASS" if all_received else "FAIL"
-        )
+    if not overall_passed:
 
-        print(
-            "Zero order loss:",
-            "PASS" if no_loss else "FAIL"
-        )
-        print(
-            "All orders accepted:",
-            "PASS" if all_accepted else "FAIL"
-        )
-
-        print(
-            "Zero order rejection:",
-            "PASS" if no_rejections else "FAIL"
-        )
-
-        print(
-            "Trade count consistency:",
-            "PASS" if same_trades else "FAIL"
-        )
-
-        print(
-            "Traded quantity consistency:",
-            "PASS" if same_quantity else "FAIL"
-        )
-
-        print(
-            "Order book consistency:",
-            "PASS" if same_buy_remaining and same_sell_remaining else "FAIL"
-        )
-
-        print(
-            "Complete output hash consistency:",
-            "PASS" if same_output else "FAIL"
-        )
-
-        print(
-            "\nWORKLOAD RESULT:",
-            "PASS" if correctness_pass else "FAIL"
-        )
-
-    print("\n========== CAPACITY SCALING COMPLETE ==========")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
+
     mp.freeze_support()
+
     main()
