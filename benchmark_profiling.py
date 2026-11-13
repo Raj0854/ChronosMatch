@@ -1,10 +1,8 @@
-
 import statistics
 import time
 
 from benchmark_match import generate_orders, TOTAL_ORDERS
 from cython_engine import CythonMatchingEngine
-
 
 WARMUP_RUNS = 3
 MEASURED_RUNS = 20
@@ -14,28 +12,36 @@ ORDERS = generate_orders(TOTAL_ORDERS)
 
 
 def run_once(profile_enabled):
+
     engine = CythonMatchingEngine(capacity=len(ORDERS))
 
-    for order_id, side, price, quantity in ORDERS:
-        if side == "BUY":
-            engine.add_buy_order(order_id, price, quantity)
-        else:
-            engine.add_sell_order(order_id, price, quantity)
-
     start_ns = time.perf_counter_ns()
+    internal_ns = 0
 
-    if profile_enabled:
-        engine.profile_stages()
-    else:
-        engine.match_orders()
+    for order_id, side, price, quantity in ORDERS:
+
+        if side == "BUY":
+
+            accepted = engine.add_buy_order(order_id, price, quantity)
+
+        else:
+
+            accepted = engine.add_sell_order(order_id, price, quantity)
+
+        if accepted is False:
+            continue
+
+        if profile_enabled:
+
+            engine.profile_stages()
+
+            internal_ns += engine.get_last_profile()[0]
+
+        else:
+
+            engine.match_orders()
 
     elapsed_ns = time.perf_counter_ns() - start_ns
-
-    # Internal Cython timer, active only in profiling mode.
-    internal_ns = (
-        engine.get_last_profile()[0]
-        if profile_enabled else 0
-    )
 
     trades = engine.get_trades()
     order_books = engine.get_order_books()
@@ -116,10 +122,7 @@ if median_trade_count > 0:
     print(f"Average matching time per trade: {average_ns / 1000:,.3f} µs")
 
 if normal_median_ns > 0:
-    overhead = (
-        (profiled_median_ns - normal_median_ns)
-        / normal_median_ns
-    ) * 100
+    overhead = ((profiled_median_ns - normal_median_ns) / normal_median_ns) * 100
     print(f"\nProfiling measurement difference: {overhead:+.2f}%")
 
 print("\nCORRECTNESS:", "PASS" if correctness_pass else "FAIL")
